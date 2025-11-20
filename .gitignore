@@ -1,0 +1,11 @@
+# Build artifacts
+build/
+*.o
+*.dylib
+*.so
+*.dll
+
+# Test output
+*.log
+
+sqlite-*
