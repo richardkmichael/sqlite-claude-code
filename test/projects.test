@@ -1,0 +1,35 @@
+-- Test projects virtual table functionality
+
+-- Load extension
+.load ./build/claude_code.dylib
+
+-- Test zero-setup: table already exists
+.tables
+
+-- Test basic query: count projects
+SELECT COUNT(*) as project_count FROM projects;
+
+-- Test column values (should show our test-projects)
+SELECT project_id FROM projects ORDER BY project_id;
+
+-- Test all columns
+SELECT project_id, directory, created_at, updated_at FROM projects LIMIT 1;
+
+-- Test manual table creation with custom path
+CREATE VIRTUAL TABLE test_projects USING claudecode_projects(
+  base_directory='./test-projects'
+);
+
+-- Verify manual table works
+SELECT project_id FROM test_projects ORDER BY project_id;
+
+-- Test that we get 3 projects from test-projects
+SELECT COUNT(*) as count FROM test_projects;
+
+-- Test metadata columns are populated
+SELECT
+  project_id,
+  CASE WHEN created_at > 0 THEN 'OK' ELSE 'MISSING' END as has_created,
+  CASE WHEN updated_at > 0 THEN 'OK' ELSE 'MISSING' END as has_updated
+FROM test_projects
+ORDER BY project_id;

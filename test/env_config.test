@@ -1,0 +1,7 @@
+-- Test: CLAUDE_PROJECTS_DIR set → use it
+-- Runner sets: CLAUDE_PROJECTS_DIR=./test-projects
+
+.load ./build/claude_code.dylib
+
+-- Should find 3 projects from test-projects directory
+SELECT COUNT(*) FROM projects;

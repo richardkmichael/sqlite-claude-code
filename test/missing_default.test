@@ -1,0 +1,7 @@
+-- Test: CLAUDE_PROJECTS_DIR not set AND $HOME/.claude/projects missing → error
+-- Runner sets: CLAUDE_PROJECTS_DIR unset, HOME=/tmp/nonexistent
+
+.load ./build/claude_code.dylib
+
+-- Should not reach here
+SELECT 'FAIL' as result;

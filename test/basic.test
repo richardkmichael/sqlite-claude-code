@@ -1,0 +1,5 @@
+-- Basic test: Extension loads successfully
+.load ./build/claude_code.dylib
+
+-- Verify SQLite is working
+SELECT 'Basic test passed' AS result;

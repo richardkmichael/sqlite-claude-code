@@ -1,0 +1,7 @@
+-- Test: CLAUDE_PROJECTS_DIR not set AND $HOME/.claude/projects exists → use default
+-- Runner sets: CLAUDE_PROJECTS_DIR unset, HOME=$HOME
+
+.load ./build/claude_code.dylib
+
+-- Should use $HOME/.claude/projects
+SELECT COUNT(*) FROM projects;
