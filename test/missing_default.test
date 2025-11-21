@@ -1,7 +1,13 @@
 -- Test: CLAUDE_PROJECTS_DIR not set AND $HOME/.claude/projects missing → error
 -- Runner sets: CLAUDE_PROJECTS_DIR unset, HOME=/tmp/nonexistent
 
+.bail on
+
+SELECT '=== Testing Missing Default Directory ===' as '';
+SELECT 'Extension load should fail with "Default directory ... does not exist"' as '';
+SELECT '' as '';
+
 .load ./build/claude_code.dylib
 
 -- Should not reach here
-SELECT 'FAIL' as result;
+SELECT 'FAIL - extension loaded when it should have failed' as result;
