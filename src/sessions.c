@@ -6,7 +6,7 @@
  */
 
 #include <sqlite3ext.h>
-extern const sqlite3_api_routines *sqlite3_api;  /* Defined in projects.c */
+extern const sqlite3_api_routines *sqlite3_api;  /* Defined in init.c */
 
 #include "common.h"
 
@@ -428,3 +428,17 @@ sqlite3_module sessions_module = {
   NULL,                   /* xShadowName */
   NULL                    /* xIntegrity */
 };
+
+/*
+ * Create the sessions virtual table with the given base directory
+ */
+int create_sessions_table(sqlite3 *db, const char *base_dir, char **pzErrMsg) {
+  char sql[PATH_MAX + 256];
+
+  snprintf(sql, sizeof(sql),
+           "CREATE VIRTUAL TABLE IF NOT EXISTS sessions "
+           "USING claudecode_sessions(base_directory='%s')",
+           base_dir);
+
+  return sqlite3_exec(db, sql, NULL, NULL, pzErrMsg);
+}

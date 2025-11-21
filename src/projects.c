@@ -5,7 +5,7 @@
  */
 
 #include <sqlite3ext.h>
-SQLITE_EXTENSION_INIT1
+extern const sqlite3_api_routines *sqlite3_api;  /* Defined in init.c */
 
 #include "common.h"
 
@@ -307,7 +307,7 @@ static int projects_rowid(sqlite3_vtab_cursor *cur, sqlite3_int64 *pRowid) {
 /*
  * Virtual table module definition
  */
-static sqlite3_module projects_module = {
+sqlite3_module projects_module = {
   0,                      /* iVersion */
   projects_connect,       /* xCreate */
   projects_connect,       /* xConnect */
@@ -335,93 +335,16 @@ static sqlite3_module projects_module = {
   NULL                    /* xIntegrity */
 };
 
-
-#ifdef _WIN32
-__declspec(dllexport)
-#endif
 /*
- * Extension initialization function.
- * This is called when the extension is loaded via .load command.
- *
- * Note: Function name must match the library filename convention.
- * For claude_code.dylib, SQLite expects sqlite3_claudecode_init
- * (underscores in filename are removed from the entry point name).
- *
- * Phase 2: Register projects virtual table module and auto-create table
+ * Create the projects virtual table with the given base directory
  */
-int sqlite3_claudecode_init(
-  sqlite3 *db,
-  char **pzErrMsg,
-  const sqlite3_api_routines *pApi
-) {
-  SQLITE_EXTENSION_INIT2(pApi);
-  int rc;
-
-  /* Defensive check */
-  if (!db) {
-    if (pzErrMsg) {
-      *pzErrMsg = sqlite3_mprintf("Invalid database connection");
-    }
-    return SQLITE_ERROR;
-  }
-
-  /* Register projects virtual table module */
-  rc = sqlite3_create_module(db, "claudecode_projects", &projects_module, NULL);
-  if (rc != SQLITE_OK) {
-    return rc;
-  }
-
-  /* Register sessions virtual table module */
-  rc = sqlite3_create_module(db, "claudecode_sessions", &sessions_module, NULL);
-  if (rc != SQLITE_OK) {
-    return rc;
-  }
-
-  /* Zero-setup: Auto-create projects and sessions tables */
-  const char *default_dir = getenv("CLAUDE_PROJECTS_DIR");
-  char expanded_path[PATH_MAX];
-
-  if (!default_dir) {
-    /* Default to $HOME/.claude/projects */
-    const char *home = getenv("HOME");
-    snprintf(expanded_path, sizeof(expanded_path), "%s/.claude/projects", home);
-    default_dir = expanded_path;
-
-    /* Verify the default directory exists */
-    struct stat st;
-    if (stat(default_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
-      if (pzErrMsg) {
-        *pzErrMsg = sqlite3_mprintf(
-          "Default directory %s does not exist. Set CLAUDE_PROJECTS_DIR environment variable to specify projects directory.",
-          default_dir);
-      }
-      return SQLITE_ERROR;
-    }
-  }
-
+int create_projects_table(sqlite3 *db, const char *base_dir, char **pzErrMsg) {
   char sql[PATH_MAX + 256];
 
-  /* Create projects table */
   snprintf(sql, sizeof(sql),
            "CREATE VIRTUAL TABLE IF NOT EXISTS projects "
            "USING claudecode_projects(base_directory='%s')",
-           default_dir);
+           base_dir);
 
-  rc = sqlite3_exec(db, sql, NULL, NULL, pzErrMsg);
-  if (rc != SQLITE_OK) {
-    return rc;
-  }
-
-  /* Create sessions table */
-  snprintf(sql, sizeof(sql),
-           "CREATE VIRTUAL TABLE IF NOT EXISTS sessions "
-           "USING claudecode_sessions(base_directory='%s')",
-           default_dir);
-
-  rc = sqlite3_exec(db, sql, NULL, NULL, pzErrMsg);
-  if (rc != SQLITE_OK) {
-    return rc;
-  }
-
-  return SQLITE_OK;
+  return sqlite3_exec(db, sql, NULL, NULL, pzErrMsg);
 }
