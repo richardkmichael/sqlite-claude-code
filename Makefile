@@ -3,20 +3,22 @@ CFLAGS = -Wall -Wextra -Werror -fPIC -I/opt/homebrew/Cellar/sqlite/3.51.0/includ
 LDFLAGS = -L/opt/homebrew/Cellar/sqlite/3.51.0/lib -lsqlite3 -dynamiclib
 
 SOURCES = src/common.c src/projects.c src/sessions.c src/cJSON.c
-OBJECTS = $(SOURCES:.c=.o)
+OBJECTS = $(patsubst src/%.c,build/%.o,$(SOURCES))
 TARGET = build/claude_code.dylib
 
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	mkdir -p build
 	$(CC) $(LDFLAGS) -o $@ $^
 
-%.o: %.c
+build/%.o: src/%.c | build
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+build:
+	mkdir -p build
+
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -rf build
 
 test: $(TARGET)
 	./test/run_tests.sh
