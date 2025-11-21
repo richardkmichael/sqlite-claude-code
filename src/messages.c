@@ -394,10 +394,16 @@ static int open_next_session_file(MessagesCursor *pCur, MessagesVTab *pTab) {
     snprintf(pCur->session.path, sizeof(pCur->session.path),
              "%s/%s", pCur->project.path, name);
 
-    /* Open the file */
-    pCur->session.file = fopen(pCur->session.path, "r");
+    /* Open the file securely (no symlinks) */
+    int fd = open(pCur->session.path, O_RDONLY | O_NOFOLLOW);
+    if (fd == -1) {
+      continue;  /* Skip if can't open or is symlink */
+    }
+
+    pCur->session.file = fdopen(fd, "r");
     if (!pCur->session.file) {
-      continue;  /* Skip if can't open */
+      close(fd);
+      continue;
     }
 
     /* Extract session ID from filename */
@@ -438,10 +444,15 @@ static int open_next_project(MessagesCursor *pCur) {
     copy_config_string(pCur->project.id, sizeof(pCur->project.id),
                        name, strlen(name));
 
-    /* Open sessions directory */
-    pCur->project.sessions_dir = opendir(pCur->project.path);
-    if (pCur->project.sessions_dir) {
-      return 1;
+    /* Open sessions directory securely */
+    DIR *dir = opendir(pCur->project.path);
+    if (dir) {
+      /* Verify it's a real directory (securely on POSIX, best-effort on Windows) */
+      if (validate_directory(dir, pCur->project.path)) {
+        pCur->project.sessions_dir = dir;
+        return 1;
+      }
+      closedir(dir);
     }
   }
 
@@ -508,13 +519,17 @@ static int filter_by_session(MessagesCursor *pCur, const char *session_id) {
         snprintf(pCur->session.path, sizeof(pCur->session.path),
                  "%s/%s", pCur->project.path, sess_entry->d_name);
 
-        /* Open the file */
-        pCur->session.file = fopen(pCur->session.path, "r");
-        if (pCur->session.file) {
-          strncpy(pCur->session.id, session_id, sizeof(pCur->session.id) - 1);
-          pCur->session.id[sizeof(pCur->session.id) - 1] = '\0';
-          closedir(proj_dir);
-          return 1;  /* Success */
+        /* Open the file securely (no symlinks) */
+        int fd = open(pCur->session.path, O_RDONLY | O_NOFOLLOW);
+        if (fd != -1) {
+          pCur->session.file = fdopen(fd, "r");
+          if (pCur->session.file) {
+            strncpy(pCur->session.id, session_id, sizeof(pCur->session.id) - 1);
+            pCur->session.id[sizeof(pCur->session.id) - 1] = '\0';
+            closedir(proj_dir);
+            return 1;  /* Success */
+          }
+          close(fd);
         }
       }
     }
@@ -541,6 +556,19 @@ static int messages_next(sqlite3_vtab_cursor *cur) {
         /* Skip empty lines */
         if (pCur->line_buffer[0] == '\n' || pCur->line_buffer[0] == '\0') {
           continue;
+        }
+
+        /* Check for partial line at EOF (likely write-in-progress) */
+        size_t len = strlen(pCur->line_buffer);
+        if (len > 0 && pCur->line_buffer[len - 1] != '\n') {
+          /* Peek to see if we're at EOF */
+          int c = fgetc(pCur->session.file);
+          if (c == EOF) {
+            fprintf(stderr, "warning: skipping partial line in %s (write in progress?)\n",
+                    pCur->session.path);
+            continue;
+          }
+          ungetc(c, pCur->session.file);
         }
 
         /* Parse the JSON */

@@ -269,10 +269,15 @@ static int sessions_next(sqlite3_vtab_cursor *cur) {
         snprintf(pCur->session.path, sizeof(pCur->session.path),
                  "%s/%s", pCur->project.path, name);
 
-        /* Get file stats */
+        /* Get file stats (lstat to detect symlinks) */
         struct stat st;
-        if (stat(pCur->session.path, &st) != 0) {
+        if (lstat(pCur->session.path, &st) != 0) {
           continue;  /* Skip if stat fails */
+        }
+
+        /* Security: Ignore symbolic links to prevent arbitrary file metadata leak */
+        if (S_ISLNK(st.st_mode)) {
+          continue;
         }
 
         /* Extract session ID from filename */
@@ -314,11 +319,16 @@ static int sessions_next(sqlite3_vtab_cursor *cur) {
       copy_config_string(pCur->project.id, sizeof(pCur->project.id),
                          name, strlen(name));
 
-      /* Open sessions directory for this project */
-      pCur->project.sessions_dir = opendir(pCur->project.path);
-      if (pCur->project.sessions_dir) {
-        /* Found a valid project, restart loop to scan its sessions */
-        break;
+      /* Open sessions directory securely */
+      DIR *dir = opendir(pCur->project.path);
+      if (dir) {
+        /* Verify it's a real directory */
+        if (validate_directory(dir, pCur->project.path)) {
+          pCur->project.sessions_dir = dir;
+          /* Found a valid project, restart loop to scan its sessions */
+          break;
+        }
+        closedir(dir);
       }
     }
 
@@ -374,10 +384,15 @@ static int filter_by_project(SessionsCursor *pCur, const char *project_id) {
     copy_config_string(pCur->project.id, sizeof(pCur->project.id),
                        name, strlen(name));
 
-    /* Open sessions directory */
-    pCur->project.sessions_dir = opendir(pCur->project.path);
-    if (pCur->project.sessions_dir) {
-      return 1;  /* Success */
+    /* Open sessions directory securely */
+    DIR *dir = opendir(pCur->project.path);
+    if (dir) {
+      /* Verify it's a real directory */
+      if (validate_directory(dir, pCur->project.path)) {
+        pCur->project.sessions_dir = dir;
+        return 1;  /* Success */
+      }
+      closedir(dir);
     }
   }
 

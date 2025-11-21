@@ -4,6 +4,104 @@
 
 #include "common.h"
 
+#ifdef _WIN32
+/*
+ * Windows Compatibility Layer Implementation
+ */
+
+DIR *opendir(const char *name) {
+  DIR *dir = (DIR *)malloc(sizeof(DIR));
+  if (!dir) {
+    errno = ENOMEM;
+    return NULL;
+  }
+
+  snprintf(dir->dir_path, PATH_MAX, "%s\\*", name);
+  
+  dir->hFind = FindFirstFileA(dir->dir_path, &dir->data);
+  if (dir->hFind == INVALID_HANDLE_VALUE) {
+    free(dir);
+    return NULL;
+  }
+  
+  /* Store original path for validation */
+  strncpy(dir->dir_path, name, PATH_MAX - 1);
+  dir->dir_path[PATH_MAX - 1] = '\0';
+  
+  dir->first_read = 1;
+  return dir;
+}
+
+struct dirent *readdir(DIR *dir) {
+  if (!dir) return NULL;
+
+  if (dir->first_read) {
+    dir->first_read = 0;
+    /* First file is already found by FindFirstFile */
+  } else {
+    if (!FindNextFileA(dir->hFind, &dir->data)) {
+      return NULL;
+    }
+  }
+
+  strncpy(dir->ent.d_name, dir->data.cFileName, PATH_MAX - 1);
+  dir->ent.d_name[PATH_MAX - 1] = '\0';
+  return &dir->ent;
+}
+
+int closedir(DIR *dir) {
+  if (!dir) return -1;
+  if (dir->hFind != INVALID_HANDLE_VALUE) {
+    FindClose(dir->hFind);
+  }
+  free(dir);
+  return 0;
+}
+
+int win32_lstat(const char *path, struct stat *buf) {
+  DWORD attrs = GetFileAttributesA(path);
+  if (attrs == INVALID_FILE_ATTRIBUTES) {
+    return -1;
+  }
+
+  /* Perform standard stat to get sizes/times */
+  if (_stat(path, (struct _stat *)buf) != 0) {
+    return -1;
+  }
+
+  /* If it's a reparse point, mark it as a link in our custom mode */
+  if (attrs & FILE_ATTRIBUTE_REPARSE_POINT) {
+    /* Clear other type bits and set custom LINK flag */
+    buf->st_mode &= ~S_IFMT;
+    buf->st_mode |= 0xA000; /* S_IFLNK replacement */
+  }
+
+  return 0;
+}
+
+#endif /* _WIN32 */
+
+/*
+ * Validate a directory securely (or as securely as possible on Windows)
+ */
+int validate_directory(DIR *dir, const char *path UNUSED) {
+  struct stat st;
+
+#ifdef _WIN32
+  /* Windows: Fallback to path-based check (TOCTOU risk accepted due to OS limits) */
+  if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+    return 1;
+  }
+#else
+  /* POSIX: Secure check using file descriptor */
+  if (dir && fstat(dirfd(dir), &st) == 0 && S_ISDIR(st.st_mode)) {
+    return 1;
+  }
+#endif
+
+  return 0;
+}
+
 /*
  * Helper: Safely copy string with bounds checking
  */

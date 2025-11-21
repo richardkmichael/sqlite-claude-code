@@ -186,9 +186,9 @@ static int projects_next(sqlite3_vtab_cursor *cur) {
     snprintf(pCur->current.path, sizeof(pCur->current.path), "%s/%s",
              pCur->base_path, entry->d_name);
 
-    /* Check if it's a directory and get metadata */
+    /* Check if it's a directory securely (ignore symlinks) */
     struct stat st;
-    if (stat(pCur->current.path, &st) == 0 && S_ISDIR(st.st_mode)) {
+    if (lstat(pCur->current.path, &st) == 0 && S_ISDIR(st.st_mode)) {
       /* Store project name */
       strncpy(pCur->current.name, entry->d_name, sizeof(pCur->current.name) - 1);
       pCur->current.name[sizeof(pCur->current.name) - 1] = '\0';

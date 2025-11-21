@@ -11,12 +11,85 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <limits.h>
 #include <errno.h>
 #include <time.h>
+
+#ifdef _WIN32
+  #define WIN32_LEAN_AND_MEAN
+  #include <windows.h>
+  #include <io.h>
+  #include <direct.h>
+  #include <sys/stat.h>
+  #include <fcntl.h>
+
+  /* Constants and Types */
+  #ifndef PATH_MAX
+    #define PATH_MAX MAX_PATH
+  #endif
+  #ifndef S_ISDIR
+    #define S_ISDIR(mode) (((mode) & S_IFMT) == S_IFDIR)
+  #endif
+  #ifndef S_ISREG
+    #define S_ISREG(mode) (((mode) & S_IFMT) == S_IFREG)
+  #endif
+  #ifndef S_ISLNK
+    /* Windows _stat doesn't report S_IFLNK, we handle this via lstat wrapper */
+    #define S_ISLNK(mode) (((mode) & S_IFMT) == 0xA000) /* Custom flag for our shim */
+  #endif
+
+  #define O_NOFOLLOW 0 /* Not supported in _open, handled differently or ignored */
+  
+  /* dirent.h Shim for MSVC */
+  typedef struct dirent {
+    char d_name[PATH_MAX];
+  } dirent;
+
+  typedef struct DIR {
+    HANDLE hFind;
+    WIN32_FIND_DATAA data;
+    struct dirent ent;
+    int first_read;
+    char dir_path[PATH_MAX]; /* stored for stat checks since no dirfd */
+  } DIR;
+
+  DIR *opendir(const char *name);
+  struct dirent *readdir(DIR *dir);
+  int closedir(DIR *dir);
+  
+  /* 
+   * Windows lacks dirfd. We'll define a macro that returns -1 
+   * and handle it in the calling code.
+   */
+  #define dirfd(d) (-1)
+
+  /* Function Mappings */
+  #define open _open
+  #define close _close
+  #define fdopen _fdopen
+  #define fstat _fstat
+  #define stat _stat
+  
+  /* lstat Shim Prototype */
+  int win32_lstat(const char *path, struct stat *buf);
+  #define lstat win32_lstat
+
+#else
+  /* POSIX Headers */
+  #include <dirent.h>
+  #include <sys/stat.h>
+  #include <sys/types.h>
+  #include <fcntl.h>
+  #include <unistd.h>
+#endif
+
+/* 
+ * Validate a directory securely.
+ * On POSIX: Uses fstat(dirfd(dir)) to ensure the open directory handle matches.
+ * On Windows: Fallback to stat(path) as dirfd isn't available.
+ */
+int validate_directory(DIR *dir, const char *path);
+
 
 /*
  * Portable unused parameter handling
