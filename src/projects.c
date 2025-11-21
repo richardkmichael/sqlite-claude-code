@@ -469,7 +469,6 @@ typedef struct CurrentSession {
   char path[PATH_MAX];      /* Full path to .jsonl file */
   time_t created_at;        /* File creation time */
   time_t updated_at;        /* File modification time */
-  int record_count;         /* Number of records in file */
 } CurrentSession;
 
 /*
@@ -533,30 +532,6 @@ static void extract_session_id(const char *filename, char *session_id, size_t si
 }
 
 /*
- * Helper: Count records in JSONL file
- * Efficiently counts lines without parsing JSON
- */
-static int count_jsonl_records(const char *filepath) {
-  FILE *fp = fopen(filepath, "r");
-  if (!fp) {
-    return -1;
-  }
-
-  int count = 0;
-  char buffer[8192];
-
-  while (fgets(buffer, sizeof(buffer), fp)) {
-    /* Count non-empty lines */
-    if (buffer[0] != '\0' && buffer[0] != '\n') {
-      count++;
-    }
-  }
-
-  fclose(fp);
-  return count;
-}
-
-/*
  * xConnect/xCreate - Create a new sessions virtual table instance
  */
 static int sessions_connect(
@@ -605,7 +580,6 @@ static int sessions_connect(
     "  session_id TEXT,"     /* UUID from filename */
     "  project_id TEXT,"     /* Foreign key to projects */
     "  file_path TEXT,"      /* Full path to .jsonl file */
-    "  record_count INTEGER," /* Number of messages */
     "  created_at INTEGER,"  /* ctime */
     "  updated_at INTEGER"   /* mtime */
     ")"
@@ -735,9 +709,6 @@ static int sessions_next(sqlite3_vtab_cursor *cur) {
         pCur->session.created_at = st.st_ctime;
         pCur->session.updated_at = st.st_mtime;
 
-        /* Count records */
-        pCur->session.record_count = count_jsonl_records(pCur->session.path);
-
         pCur->rowid++;
         return SQLITE_OK;
       }
@@ -862,15 +833,11 @@ static int sessions_column(
       sqlite3_result_text(ctx, pCur->session.path, -1, SQLITE_TRANSIENT);
       break;
 
-    case 3:  /* record_count */
-      sqlite3_result_int(ctx, pCur->session.record_count);
-      break;
-
-    case 4:  /* created_at */
+    case 3:  /* created_at */
       sqlite3_result_int64(ctx, pCur->session.created_at);
       break;
 
-    case 5:  /* updated_at */
+    case 4:  /* updated_at */
       sqlite3_result_int64(ctx, pCur->session.updated_at);
       break;
 

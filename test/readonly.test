@@ -23,12 +23,12 @@ DELETE FROM projects WHERE project_id = (SELECT project_id FROM projects LIMIT 1
 .print ""
 
 .print "Test 4: Attempting INSERT (should fail with 'table may not be modified'):"
-INSERT INTO sessions (session_id, project_id, record_count)
-VALUES ('test-session-id', 'test-project', 10);
+INSERT INTO sessions (session_id, project_id, file_path)
+VALUES ('test-session-id', 'test-project', '/fake/path.jsonl');
 
 .print ""
 .print "Test 5: Attempting UPDATE (should fail with 'table may not be modified'):"
-UPDATE sessions SET record_count = 999 WHERE session_id = (SELECT session_id FROM sessions LIMIT 1);
+UPDATE sessions SET file_path = '/new/path.jsonl' WHERE session_id = (SELECT session_id FROM sessions LIMIT 1);
 
 .print ""
 .print "Test 6: Attempting DELETE (should fail with 'table may not be modified'):"
