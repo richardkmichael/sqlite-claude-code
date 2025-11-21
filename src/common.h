@@ -91,9 +91,11 @@ void extract_session_id(const char *filename, char *session_id, size_t size);
 /* External module declarations */
 extern sqlite3_module projects_module;
 extern sqlite3_module sessions_module;
+extern sqlite3_module messages_module;
 
 /* Table creation functions (defined in each domain file) */
 int create_projects_table(sqlite3 *db, const char *base_dir, char **pzErrMsg);
 int create_sessions_table(sqlite3 *db, const char *base_dir, char **pzErrMsg);
+int create_messages_table(sqlite3 *db, const char *base_dir, char **pzErrMsg);
 
 #endif /* CLAUDE_CODE_COMMON_H */

@@ -48,6 +48,11 @@ int sqlite3_claudecode_init(
     return rc;
   }
 
+  rc = sqlite3_create_module(db, "claudecode_messages", &messages_module, NULL);
+  if (rc != SQLITE_OK) {
+    return rc;
+  }
+
   /* Determine base directory for auto-created tables */
   const char *default_dir = getenv("CLAUDE_PROJECTS_DIR");
   char expanded_path[PATH_MAX];
@@ -78,6 +83,11 @@ int sqlite3_claudecode_init(
   }
 
   rc = create_sessions_table(db, default_dir, pzErrMsg);
+  if (rc != SQLITE_OK) {
+    return rc;
+  }
+
+  rc = create_messages_table(db, default_dir, pzErrMsg);
   if (rc != SQLITE_OK) {
     return rc;
   }

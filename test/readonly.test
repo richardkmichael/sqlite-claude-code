@@ -35,6 +35,22 @@ UPDATE sessions SET file_path = '/new/path.jsonl' WHERE session_id = (SELECT ses
 DELETE FROM sessions WHERE session_id = (SELECT session_id FROM sessions LIMIT 1);
 
 .print ""
+.print "=== Testing Messages Table Read-Only Enforcement ==="
+.print ""
+
+.print "Test 7: Attempting INSERT (should fail with 'table may not be modified'):"
+INSERT INTO messages (message_id, session_id, type)
+VALUES ('test-msg-id', 'test-session', 'user');
+
+.print ""
+.print "Test 8: Attempting UPDATE (should fail with 'table may not be modified'):"
+UPDATE messages SET type = 'system' WHERE message_id = (SELECT message_id FROM messages LIMIT 1);
+
+.print ""
+.print "Test 9: Attempting DELETE (should fail with 'table may not be modified'):"
+DELETE FROM messages WHERE message_id = (SELECT message_id FROM messages LIMIT 1);
+
+.print ""
 .print "=== Expected Results ==="
-.print "All 6 tests above should have failed with: 'table may not be modified'"
-.print "This confirms that both virtual tables are read-only as designed."
+.print "All 9 tests above should have failed with: 'table may not be modified'"
+.print "This confirms that all three virtual tables are read-only as designed."

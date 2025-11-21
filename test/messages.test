@@ -1,0 +1,111 @@
+-- Test messages virtual table functionality
+
+-- Load extension
+.load ./build/claude_code.dylib
+
+-- Test zero-setup: messages table already exists
+.tables
+
+-- Test manual table creation with custom path
+CREATE VIRTUAL TABLE test_messages USING claudecode_messages(
+  base_directory='./test-projects'
+);
+
+-- Verify we get expected message count (1669 messages from non-agent sessions)
+SELECT COUNT(*) as total_count FROM test_messages;
+
+-- Test message columns
+SELECT message_id, session_id, type, timestamp
+FROM test_messages
+LIMIT 5;
+
+-- Test message types distribution
+SELECT type, COUNT(*) as count
+FROM test_messages
+GROUP BY type
+ORDER BY count DESC;
+
+-- Test exclusion pattern (messages from agent- files should be excluded)
+-- If exclusion works, count should match non-agent files only
+SELECT COUNT(*) as non_agent_count
+FROM test_messages
+WHERE session_id NOT LIKE 'agent-%';
+
+-- Test that all rows have valid session_ids
+SELECT COUNT(*) as valid_session_ids
+FROM test_messages
+WHERE session_id IS NOT NULL AND session_id != '';
+
+-- Test json_data column is populated
+SELECT
+  message_id,
+  CASE WHEN json_data IS NOT NULL THEN 'OK' ELSE 'MISSING' END as has_json
+FROM test_messages
+LIMIT 3;
+
+-- Test JOIN with sessions
+CREATE VIRTUAL TABLE test_sessions USING claudecode_sessions(
+  base_directory='./test-projects'
+);
+
+SELECT s.session_id, COUNT(m.message_id) as message_count
+FROM test_sessions s
+JOIN test_messages m ON s.session_id = m.session_id
+GROUP BY s.session_id
+ORDER BY message_count DESC
+LIMIT 5;
+
+-- Test filtering by type
+.print "\n=== Testing type filtering ==="
+
+SELECT COUNT(*) as user_count FROM test_messages WHERE type = 'user';
+SELECT COUNT(*) as assistant_count FROM test_messages WHERE type = 'assistant';
+SELECT COUNT(*) as system_count FROM test_messages WHERE type = 'system';
+
+-- Test filtering by session_id
+.print "\n=== Testing session_id filtering ==="
+
+SELECT COUNT(*) as session_filtered
+FROM test_messages
+WHERE session_id = (SELECT session_id FROM test_messages LIMIT 1);
+
+-- Test parent_id column (NULL for root messages)
+.print "\n=== Testing parent_id column ==="
+
+SELECT COUNT(*) as root_messages
+FROM test_messages
+WHERE parent_id IS NULL;
+
+SELECT COUNT(*) as reply_messages
+FROM test_messages
+WHERE parent_id IS NOT NULL;
+
+-- Test subtype column (for system messages)
+.print "\n=== Testing subtype column ==="
+
+SELECT DISTINCT subtype
+FROM test_messages
+WHERE subtype IS NOT NULL
+LIMIT 10;
+
+-- Test ORDER BY with different columns
+.print "\n=== Testing ORDER BY ==="
+
+SELECT message_id, timestamp FROM test_messages ORDER BY timestamp LIMIT 3;
+SELECT message_id, timestamp FROM test_messages ORDER BY timestamp DESC LIMIT 3;
+
+-- Test json_extract on json_data (using SQLite's built-in JSON functions)
+.print "\n=== Testing JSON extraction ==="
+
+SELECT
+  message_id,
+  json_extract(json_data, '$.type') as extracted_type
+FROM test_messages
+LIMIT 3;
+
+-- Test read-only enforcement
+.print "\n=== Testing read-only enforcement (manual verification) ==="
+.print "Virtual tables are read-only - INSERT/UPDATE/DELETE operations are not supported"
+
+-- Verify total count again
+SELECT COUNT(*) as final_count FROM test_messages;
