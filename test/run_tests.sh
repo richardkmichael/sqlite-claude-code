@@ -5,12 +5,18 @@ set -e  # Exit on error
 
 TEST_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$TEST_DIR")"
-EXTENSION="$PROJECT_DIR/build/claude_code.dylib"
+# Allow override via CLAUDE_CODE_EXT for ASan builds
+EXTENSION="${CLAUDE_CODE_EXT:-$PROJECT_DIR/build/claude_code.dylib}"
 
 # Colors for output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
+
+# Export DYLD_INSERT_LIBRARIES if set (for ASan)
+if [ -n "$DYLD_INSERT_LIBRARIES" ]; then
+    export DYLD_INSERT_LIBRARIES
+fi
 
 echo "Running tests for Claude Code extension..."
 echo
@@ -50,7 +56,7 @@ for test_file in "$TEST_DIR"/*.test; do
             export HOME="/tmp/nonexistent_home_$$"
         fi
         # These tests should fail, so invert the result
-        if sqlite3 :memory: < "$test_file" > /dev/null 2>&1; then
+        if sed "s|./build/claude_code.dylib|$EXTENSION|g" "$test_file" | sqlite3 :memory: 2>&1; then
             echo -e "${RED}  FAIL (expected error but succeeded)${NC}"
             ((TESTS_FAILED++))
         else
@@ -62,7 +68,7 @@ for test_file in "$TEST_DIR"/*.test; do
         unset CLAUDE_PROJECTS_DIR
     fi
 
-    if sqlite3 :memory: < "$test_file" > /dev/null 2>&1; then
+    if sed "s|./build/claude_code.dylib|$EXTENSION|g" "$test_file" | sqlite3 :memory: > /dev/null 2>&1; then
         echo -e "${GREEN}  PASS${NC}"
         ((TESTS_PASSED++))
     else
