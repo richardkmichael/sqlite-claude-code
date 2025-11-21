@@ -1,0 +1,60 @@
+-- Test xBestIndex query optimization
+
+-- Load extension
+.load ./build/claude_code.dylib
+
+-- Create test tables
+CREATE VIRTUAL TABLE test_messages USING claudecode_messages(
+  base_directory='./test-projects'
+);
+
+CREATE VIRTUAL TABLE test_sessions USING claudecode_sessions(
+  base_directory='./test-projects'
+);
+
+-- Get a known session_id for testing
+.print "\n=== Available sessions ==="
+SELECT session_id FROM test_sessions LIMIT 3;
+
+-- Test EXPLAIN QUERY PLAN for messages with session_id filter
+.print "\n=== Query plan: messages WHERE session_id = ? ==="
+EXPLAIN QUERY PLAN
+SELECT * FROM test_messages WHERE session_id = '136a28d8-a077-4e92-a098-db544000f4cd';
+
+-- Test EXPLAIN QUERY PLAN for messages full scan
+.print "\n=== Query plan: messages full scan ==="
+EXPLAIN QUERY PLAN
+SELECT COUNT(*) FROM test_messages;
+
+-- Test EXPLAIN QUERY PLAN for sessions with project_id filter
+.print "\n=== Query plan: sessions WHERE project_id = ? ==="
+EXPLAIN QUERY PLAN
+SELECT * FROM test_sessions WHERE project_id = 'claude-code-logger';
+
+-- Test EXPLAIN QUERY PLAN for sessions full scan
+.print "\n=== Query plan: sessions full scan ==="
+EXPLAIN QUERY PLAN
+SELECT COUNT(*) FROM test_sessions;
+
+-- Timing tests
+.timer on
+
+.print "\n=== Timing: Full scan all messages ==="
+SELECT COUNT(*) as total FROM test_messages;
+
+.print "\n=== Timing: Filter by session_id (should be fast) ==="
+SELECT COUNT(*) as filtered FROM test_messages
+WHERE session_id = '136a28d8-a077-4e92-a098-db544000f4cd';
+
+.print "\n=== Timing: Filter by project_id on sessions (should be fast) ==="
+SELECT COUNT(*) as filtered FROM test_sessions
+WHERE project_id = 'claude-code-logger';
+
+.timer off
+
+-- Verify filtered query returns correct results
+.print "\n=== Verify filtered query results ==="
+SELECT session_id, type, COUNT(*) as count
+FROM test_messages
+WHERE session_id = '136a28d8-a077-4e92-a098-db544000f4cd'
+GROUP BY type;

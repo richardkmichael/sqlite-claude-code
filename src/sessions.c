@@ -10,6 +10,17 @@ extern const sqlite3_api_routines *sqlite3_api;  /* Defined in init.c */
 
 #include "common.h"
 
+/* Query plan constants */
+#define PLAN_FULL_SCAN       1
+#define PLAN_PROJECT_FILTER  2
+
+/* Column indices (must match schema order) */
+#define COL_SESSION_ID  0
+#define COL_PROJECT_ID  1
+#define COL_FILE_PATH   2
+#define COL_CREATED_AT  3
+#define COL_UPDATED_AT  4
+
 /*
  * Sessions virtual table structure
  */
@@ -48,6 +59,7 @@ typedef struct SessionsCursor {
   DIR *projects_dir;
   CurrentProjectScan project;
   CurrentSession session;
+  char filter_project_id[256];  /* Project ID filter (empty = no filter) */
   int eof;
   sqlite3_int64 rowid;
 } SessionsCursor;
@@ -147,25 +159,45 @@ static int sessions_disconnect(sqlite3_vtab *pVTab) {
 /*
  * xBestIndex - Determine the best way to execute a query
  *
- * SQLite calls this to ask: "How would you execute this query?"
- * We respond with:
- *   idxNum - An arbitrary integer identifying our chosen query plan
- *            (we pick the value, SQLite just passes it back to xFilter)
- *   estimatedCost - Relative cost (SQLite compares across plans)
- *   estimatedRows - Expected number of rows returned
- *
- * Phase 3: Simple implementation - only one plan (full scan)
- * Phase 5: Will add optimized plans for session_id/project_id filters
+ * Detects constraints in WHERE clause and chooses optimal query plan:
+ *   PLAN_PROJECT_FILTER: project_id = ? -> scan single project directory (fast)
+ *   PLAN_FULL_SCAN: no constraints -> scan all projects (expensive)
  */
 static int sessions_best_index(sqlite3_vtab *tab UNUSED, sqlite3_index_info *pIdxInfo) {
-  MARK_UNUSED(tab);  /* Required by interface, unused for simple full scan */
+  MARK_UNUSED(tab);
 
-  /* Plan ID 1: Full scan of all session files (our only plan for now) */
-  pIdxInfo->idxNum = 1;
+  int project_constraint_idx = -1;
 
-  /* Cost estimate: scanning ~500 session files is moderate work */
-  pIdxInfo->estimatedCost = 5000.0;
-  pIdxInfo->estimatedRows = 500;
+  /* Scan constraints from WHERE clause */
+  for (int i = 0; i < pIdxInfo->nConstraint; i++) {
+    if (!pIdxInfo->aConstraint[i].usable) {
+      continue;
+    }
+
+    /* Look for equality constraints on project_id */
+    if (pIdxInfo->aConstraint[i].op == SQLITE_INDEX_CONSTRAINT_EQ) {
+      int col = pIdxInfo->aConstraint[i].iColumn;
+
+      if (col == COL_PROJECT_ID) {
+        project_constraint_idx = i;
+      }
+    }
+  }
+
+  /* Choose best plan based on available constraints */
+  if (project_constraint_idx != -1) {
+    /* Filter by project_id - scan only one project directory */
+    pIdxInfo->idxNum = PLAN_PROJECT_FILTER;
+    pIdxInfo->aConstraintUsage[project_constraint_idx].argvIndex = 1;
+    pIdxInfo->aConstraintUsage[project_constraint_idx].omit = 1;
+    pIdxInfo->estimatedCost = 100.0;   /* Scan one directory */
+    pIdxInfo->estimatedRows = 50;
+  } else {
+    /* Full scan of all session files */
+    pIdxInfo->idxNum = PLAN_FULL_SCAN;
+    pIdxInfo->estimatedCost = 5000.0;
+    pIdxInfo->estimatedRows = 500;
+  }
 
   return SQLITE_OK;
 }
@@ -295,7 +327,63 @@ static int sessions_next(sqlite3_vtab_cursor *cur) {
       pCur->eof = 1;
       return SQLITE_OK;
     }
+
+    /* If filtering by project_id, we shouldn't reach here (only one project) */
+    if (pCur->filter_project_id[0] != '\0') {
+      pCur->eof = 1;
+      return SQLITE_OK;
+    }
   }
+}
+
+/*
+ * Helper: Open a specific project directory by project_id
+ * Returns 1 if found and opened, 0 if not found
+ */
+static int filter_by_project(SessionsCursor *pCur, const char *project_id) {
+  struct dirent *entry;
+
+  /* Store filter for later reference */
+  strncpy(pCur->filter_project_id, project_id, sizeof(pCur->filter_project_id) - 1);
+  pCur->filter_project_id[sizeof(pCur->filter_project_id) - 1] = '\0';
+
+  /* Search for the target project directory */
+  while ((entry = readdir(pCur->projects_dir)) != NULL) {
+    const char *name = entry->d_name;
+
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+      continue;
+    }
+
+    /* Check if this is the project we want */
+    if (strcmp(name, project_id) != 0) {
+      continue;
+    }
+
+    /* Build project path */
+    snprintf(pCur->project.path, sizeof(pCur->project.path),
+             "%s/%s", pCur->base_path, name);
+
+    /* Check if it's a directory */
+    struct stat st;
+    if (stat(pCur->project.path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+      continue;
+    }
+
+    /* Store project_id */
+    copy_config_string(pCur->project.id, sizeof(pCur->project.id),
+                       name, strlen(name));
+
+    /* Open sessions directory */
+    pCur->project.sessions_dir = opendir(pCur->project.path);
+    if (pCur->project.sessions_dir) {
+      return 1;  /* Success */
+    }
+  }
+
+  /* Project not found */
+  pCur->eof = 1;
+  return 0;
 }
 
 /*
@@ -306,21 +394,18 @@ static int sessions_next(sqlite3_vtab_cursor *cur) {
  *   idxStr - Optional string identifier (we don't use this)
  *   argc/argv - Constraint values from WHERE clause
  *
- * Phase 3: No constraints supported yet, parameters unused.
- * Phase 5: Will use idxNum to select optimized query plans.
+ * Supports two plans:
+ *   PLAN_FULL_SCAN - Scan all project directories
+ *   PLAN_PROJECT_FILTER - Scan only matching project_id directory
  */
 static int sessions_filter(
   sqlite3_vtab_cursor *cur,
-  int idxNum UNUSED,
+  int idxNum,
   const char *idxStr UNUSED,
-  int argc UNUSED,
-  sqlite3_value **argv UNUSED
+  int argc,
+  sqlite3_value **argv
 ) {
-  /* Phase 3: All parameters unused (no query optimization yet) */
-  MARK_UNUSED(idxNum);
-  MARK_UNUSED(idxStr);
-  MARK_UNUSED(argc);
-  MARK_UNUSED(argv);
+  MARK_UNUSED(idxStr);  /* We use idxNum, not idxStr for plan selection */
 
   SessionsCursor *pCur = (SessionsCursor*)cur;
   SessionsVTab *pTab = (SessionsVTab*)cur->pVtab;
@@ -328,6 +413,9 @@ static int sessions_filter(
   /* Copy base path */
   strncpy(pCur->base_path, pTab->config.base_directory, sizeof(pCur->base_path) - 1);
   pCur->base_path[sizeof(pCur->base_path) - 1] = '\0';
+
+  /* Clear filter state */
+  pCur->filter_project_id[0] = '\0';
 
   /* Open projects directory */
   pCur->projects_dir = opendir(pCur->base_path);
@@ -338,6 +426,17 @@ static int sessions_filter(
 
   pCur->rowid = 0;
   pCur->eof = 0;
+
+  /* Handle different query plans */
+  if (idxNum == PLAN_PROJECT_FILTER && argc >= 1) {
+    /* Filter by project_id - jump directly to target project */
+    const char *project_id = (const char *)sqlite3_value_text(argv[0]);
+    if (project_id && project_id[0] != '\0') {
+      if (!filter_by_project(pCur, project_id)) {
+        return SQLITE_OK;  /* Project not found, eof already set */
+      }
+    }
+  }
 
   /* Advance to first session */
   return sessions_next(cur);

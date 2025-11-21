@@ -98,4 +98,8 @@ int create_projects_table(sqlite3 *db, const char *base_dir, char **pzErrMsg);
 int create_sessions_table(sqlite3 *db, const char *base_dir, char **pzErrMsg);
 int create_messages_table(sqlite3 *db, const char *base_dir, char **pzErrMsg);
 
+/* SQL helper functions (defined in functions.c) */
+int register_helper_functions(sqlite3 *db);
+int create_functions_metadata_table(sqlite3 *db, char **pzErrMsg);
+
 #endif /* CLAUDE_CODE_COMMON_H */

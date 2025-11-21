@@ -53,6 +53,12 @@ int sqlite3_claudecode_init(
     return rc;
   }
 
+  /* Register SQL helper functions */
+  rc = register_helper_functions(db);
+  if (rc != SQLITE_OK) {
+    return rc;
+  }
+
   /* Determine base directory for auto-created tables */
   const char *default_dir = getenv("CLAUDE_PROJECTS_DIR");
   char expanded_path[PATH_MAX];
@@ -88,6 +94,12 @@ int sqlite3_claudecode_init(
   }
 
   rc = create_messages_table(db, default_dir, pzErrMsg);
+  if (rc != SQLITE_OK) {
+    return rc;
+  }
+
+  /* Create functions metadata table */
+  rc = create_functions_metadata_table(db, pzErrMsg);
   if (rc != SQLITE_OK) {
     return rc;
   }

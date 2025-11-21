@@ -14,6 +14,20 @@ extern const sqlite3_api_routines *sqlite3_api;  /* Defined in init.c */
 /* Maximum line buffer size (8MB for large JSON with tool outputs) */
 #define MAX_LINE_BUFFER (8 * 1024 * 1024)
 
+/* Query plan constants */
+#define PLAN_FULL_SCAN      1
+#define PLAN_SESSION_FILTER 2
+
+/* Column indices (must match schema order) */
+#define COL_MESSAGE_ID  0
+#define COL_SESSION_ID  1
+#define COL_TYPE        2
+#define COL_TIMESTAMP   3
+#define COL_PARENT_ID   4
+#define COL_USER_TYPE   5
+#define COL_SUBTYPE     6
+#define COL_JSON_DATA   7
+
 /*
  * Messages virtual table structure
  */
@@ -66,6 +80,7 @@ typedef struct MessagesCursor {
   CurrentSessionFile session;
   CurrentMessage message;
   char *line_buffer;       /* Dynamically allocated line buffer */
+  char filter_session_id[64];  /* Session ID filter (empty = no filter) */
   int eof;
   sqlite3_int64 rowid;
 } MessagesCursor;
@@ -250,18 +265,51 @@ static int messages_disconnect(sqlite3_vtab *pVTab) {
 /*
  * xBestIndex - Determine the best way to execute a query
  *
- * Phase 4: Simple implementation - only full scan
- * Phase 5: Will add session_id and project_id constraint optimization
+ * Detects constraints in WHERE clause and chooses optimal query plan:
+ *   PLAN_SESSION_FILTER: session_id = ? -> read single JSONL file (fast)
+ *   PLAN_FULL_SCAN: no constraints -> scan all files (expensive)
+ *
+ * SQLite calls this multiple times to evaluate different query strategies.
+ * We communicate back via:
+ *   idxNum: which plan we'll use
+ *   aConstraintUsage: which constraints we'll handle (omit = 1 means we handle it)
+ *   estimatedCost/estimatedRows: relative cost for SQLite to compare plans
  */
 static int messages_best_index(sqlite3_vtab *tab UNUSED, sqlite3_index_info *pIdxInfo) {
   MARK_UNUSED(tab);
 
-  /* Plan ID 1: Full scan of all messages */
-  pIdxInfo->idxNum = 1;
+  int session_constraint_idx = -1;
 
-  /* Cost estimate: scanning all messages is expensive */
-  pIdxInfo->estimatedCost = 10000000.0;
-  pIdxInfo->estimatedRows = 100000;
+  /* Scan constraints from WHERE clause */
+  for (int i = 0; i < pIdxInfo->nConstraint; i++) {
+    if (!pIdxInfo->aConstraint[i].usable) {
+      continue;
+    }
+
+    /* Look for equality constraints on session_id */
+    if (pIdxInfo->aConstraint[i].op == SQLITE_INDEX_CONSTRAINT_EQ) {
+      int col = pIdxInfo->aConstraint[i].iColumn;
+
+      if (col == COL_SESSION_ID) {
+        session_constraint_idx = i;
+      }
+    }
+  }
+
+  /* Choose best plan based on available constraints */
+  if (session_constraint_idx != -1) {
+    /* Best plan: session_id = ? -> Read single JSONL file */
+    pIdxInfo->idxNum = PLAN_SESSION_FILTER;
+    pIdxInfo->aConstraintUsage[session_constraint_idx].argvIndex = 1;
+    pIdxInfo->aConstraintUsage[session_constraint_idx].omit = 1;
+    pIdxInfo->estimatedCost = 5000.0;   /* Read one file */
+    pIdxInfo->estimatedRows = 1000;
+  } else {
+    /* Full scan of all messages (expensive) */
+    pIdxInfo->idxNum = PLAN_FULL_SCAN;
+    pIdxInfo->estimatedCost = 10000000.0;
+    pIdxInfo->estimatedRows = 100000;
+  }
 
   return SQLITE_OK;
 }
@@ -401,6 +449,85 @@ static int open_next_project(MessagesCursor *pCur) {
 }
 
 /*
+ * Helper: Find and open a specific session file by session_id
+ * Searches all projects for <session_id>.jsonl
+ * Returns 1 if found and opened, 0 if not found
+ */
+static int filter_by_session(MessagesCursor *pCur, const char *session_id) {
+  MessagesVTab *pTab = (MessagesVTab*)pCur->base.pVtab;
+  struct dirent *proj_entry;
+  struct dirent *sess_entry;
+  char target_filename[128];
+
+  /* Build target filename */
+  snprintf(target_filename, sizeof(target_filename), "%s.jsonl", session_id);
+
+  /* Store filter for later reference */
+  strncpy(pCur->filter_session_id, session_id, sizeof(pCur->filter_session_id) - 1);
+  pCur->filter_session_id[sizeof(pCur->filter_session_id) - 1] = '\0';
+
+  /* Iterate through projects to find the session file */
+  while ((proj_entry = readdir(pCur->projects_dir)) != NULL) {
+    const char *proj_name = proj_entry->d_name;
+
+    if (strcmp(proj_name, ".") == 0 || strcmp(proj_name, "..") == 0) {
+      continue;
+    }
+
+    /* Build project path */
+    snprintf(pCur->project.path, sizeof(pCur->project.path),
+             "%s/%s", pCur->base_path, proj_name);
+
+    /* Check if it's a directory */
+    struct stat st;
+    if (stat(pCur->project.path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+      continue;
+    }
+
+    /* Store project_id */
+    copy_config_string(pCur->project.id, sizeof(pCur->project.id),
+                       proj_name, strlen(proj_name));
+
+    /* Open project directory */
+    DIR *proj_dir = opendir(pCur->project.path);
+    if (!proj_dir) {
+      continue;
+    }
+
+    /* Search for the target session file */
+    while ((sess_entry = readdir(proj_dir)) != NULL) {
+      if (strcmp(sess_entry->d_name, target_filename) == 0) {
+        /* Found it! Check exclusion pattern */
+        if (messages_is_excluded_file(sess_entry->d_name, pTab->config.exclude_pattern)) {
+          closedir(proj_dir);
+          pCur->eof = 1;
+          return 0;  /* File exists but is excluded */
+        }
+
+        /* Build full path */
+        snprintf(pCur->session.path, sizeof(pCur->session.path),
+                 "%s/%s", pCur->project.path, sess_entry->d_name);
+
+        /* Open the file */
+        pCur->session.file = fopen(pCur->session.path, "r");
+        if (pCur->session.file) {
+          strncpy(pCur->session.id, session_id, sizeof(pCur->session.id) - 1);
+          pCur->session.id[sizeof(pCur->session.id) - 1] = '\0';
+          closedir(proj_dir);
+          return 1;  /* Success */
+        }
+      }
+    }
+
+    closedir(proj_dir);
+  }
+
+  /* Session file not found */
+  pCur->eof = 1;
+  return 0;
+}
+
+/*
  * xNext - Advance to next message
  */
 static int messages_next(sqlite3_vtab_cursor *cur) {
@@ -427,6 +554,12 @@ static int messages_next(sqlite3_vtab_cursor *cur) {
       /* EOF on current file */
       fclose(pCur->session.file);
       pCur->session.file = NULL;
+
+      /* If filtering by session_id, we're done after reading the one file */
+      if (pCur->filter_session_id[0] != '\0') {
+        pCur->eof = 1;
+        return SQLITE_OK;
+      }
     }
 
     /* Try to open next session file in current project */
@@ -453,21 +586,28 @@ static int messages_next(sqlite3_vtab_cursor *cur) {
 
 /*
  * xFilter - Begin scanning messages
+ *
+ * Called by SQLite after xBestIndex to start the scan.
+ * idxNum tells us which query plan to use:
+ *   PLAN_SESSION_FILTER: argv[0] contains session_id to filter by
+ *   PLAN_FULL_SCAN: no constraints, scan everything
  */
 static int messages_filter(
   sqlite3_vtab_cursor *cur,
-  int idxNum UNUSED,
+  int idxNum,
   const char *idxStr UNUSED,
-  int argc UNUSED,
-  sqlite3_value **argv UNUSED
+  int argc,
+  sqlite3_value **argv
 ) {
-  MARK_UNUSED(idxNum);
   MARK_UNUSED(idxStr);
-  MARK_UNUSED(argc);
-  MARK_UNUSED(argv);
 
   MessagesCursor *pCur = (MessagesCursor*)cur;
   MessagesVTab *pTab = (MessagesVTab*)cur->pVtab;
+
+  /* Reset cursor state */
+  pCur->rowid = 0;
+  pCur->eof = 0;
+  pCur->filter_session_id[0] = '\0';
 
   /* Copy base path */
   strncpy(pCur->base_path, pTab->config.base_directory, sizeof(pCur->base_path) - 1);
@@ -480,20 +620,37 @@ static int messages_filter(
     return SQLITE_ERROR;
   }
 
-  pCur->rowid = 0;
-  pCur->eof = 0;
+  /* Execute the chosen query plan */
+  switch (idxNum) {
+    case PLAN_SESSION_FILTER:
+      /* Filter by session_id - find and read only the matching file */
+      if (argc > 0 && sqlite3_value_type(argv[0]) == SQLITE_TEXT) {
+        const char *session_id = (const char *)sqlite3_value_text(argv[0]);
+        if (!filter_by_session(pCur, session_id)) {
+          /* Session not found or excluded - return empty result */
+          return SQLITE_OK;
+        }
+      } else {
+        /* Invalid constraint value - return empty */
+        pCur->eof = 1;
+        return SQLITE_OK;
+      }
+      break;
 
-  /* Find first project */
-  if (!open_next_project(pCur)) {
-    pCur->eof = 1;
-    return SQLITE_OK;
-  }
+    case PLAN_FULL_SCAN:
+    default:
+      /* Full scan - find first project and session */
+      if (!open_next_project(pCur)) {
+        pCur->eof = 1;
+        return SQLITE_OK;
+      }
 
-  /* Find first session file */
-  if (!open_next_session_file(pCur, pTab)) {
-    /* No session files in first project, try advancing */
-    closedir(pCur->project.sessions_dir);
-    pCur->project.sessions_dir = NULL;
+      /* Find first session file */
+      if (!open_next_session_file(pCur, pTab)) {
+        closedir(pCur->project.sessions_dir);
+        pCur->project.sessions_dir = NULL;
+      }
+      break;
   }
 
   /* Advance to first message */
