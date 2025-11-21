@@ -43,11 +43,13 @@ for test_file in "$TEST_DIR"/*.test; do
     # Set environment variable for env_config test
     if [ "$test_name" = "env_config" ]; then
         export CLAUDE_PROJECTS_DIR="./test-projects"
-    elif [ "$test_name" = "missing_default" ]; then
-        # Test expects failure when default directory doesn't exist
+    elif [ "$test_name" = "missing_default" ] || [ "$test_name" = "readonly" ] || [ "$test_name" = "errors" ]; then
+        # These tests expect failures
         unset CLAUDE_PROJECTS_DIR
-        export HOME="/tmp/nonexistent_home_$$"
-        # This test should fail, so invert the result
+        if [ "$test_name" = "missing_default" ]; then
+            export HOME="/tmp/nonexistent_home_$$"
+        fi
+        # These tests should fail, so invert the result
         if sqlite3 :memory: < "$test_file" > /dev/null 2>&1; then
             echo -e "${RED}  FAIL (expected error but succeeded)${NC}"
             ((TESTS_FAILED++))

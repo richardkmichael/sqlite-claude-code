@@ -1,0 +1,30 @@
+-- Test error handling
+-- This file contains tests that are expected to produce errors
+-- Run manually to verify proper error handling
+
+.load ./build/claude_code.dylib
+
+.print "=== Testing Error Cases ==="
+.print ""
+
+.print "Test 1: Querying projects table with non-existent directory"
+.print "(should fail with 'Cannot open directory' error):"
+CREATE VIRTUAL TABLE bad_projects USING claudecode_projects(
+  base_directory='./this-directory-does-not-exist'
+);
+SELECT COUNT(*) FROM bad_projects;
+
+.print ""
+.print "Test 2: Querying sessions table with non-existent directory"
+.print "(should fail with 'Cannot open directory' error):"
+CREATE VIRTUAL TABLE bad_sessions USING claudecode_sessions(
+  base_directory='./this-directory-does-not-exist'
+);
+SELECT COUNT(*) FROM bad_sessions;
+
+.print ""
+.print "=== Expected Results ==="
+.print "Test 1-2: Should fail with 'Cannot open directory' errors (errno=2, No such file or directory)"
+.print ""
+.print "Note: Unknown parameters are intentionally ignored for forward compatibility."
+.print "This allows newer clients to pass parameters that older implementations don't understand."

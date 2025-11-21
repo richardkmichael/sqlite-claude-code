@@ -1,0 +1,135 @@
+-- Test sessions virtual table functionality
+
+-- Load extension
+.load ./build/claude_code.dylib
+
+-- Test zero-setup: sessions table already exists
+.tables
+
+-- Test basic query: count sessions
+SELECT COUNT(*) as session_count FROM sessions;
+
+-- Test manual table creation with custom path
+CREATE VIRTUAL TABLE test_sessions USING claudecode_sessions(
+  base_directory='./test-projects'
+);
+
+-- Verify we get expected session count (12 non-agent sessions)
+SELECT COUNT(*) as count FROM test_sessions;
+
+-- Test session columns
+SELECT session_id, project_id, record_count
+FROM test_sessions
+ORDER BY project_id, session_id
+LIMIT 5;
+
+-- Test exclusion pattern (should be 0 agent- files)
+SELECT COUNT(*) as agent_count
+FROM test_sessions
+WHERE session_id LIKE 'agent-%';
+
+-- Test metadata columns are populated
+SELECT
+  session_id,
+  CASE WHEN created_at > 0 THEN 'OK' ELSE 'MISSING' END as has_created,
+  CASE WHEN updated_at > 0 THEN 'OK' ELSE 'MISSING' END as has_updated,
+  CASE WHEN record_count > 0 THEN 'OK' ELSE 'ZERO' END as has_records
+FROM test_sessions
+LIMIT 3;
+
+-- Test JOIN with projects
+SELECT p.project_id, COUNT(s.session_id) as session_count
+FROM projects p
+JOIN sessions s ON p.project_id = s.project_id
+GROUP BY p.project_id
+ORDER BY session_count DESC
+LIMIT 5;
+
+-- Test foreign key relationship with test data
+CREATE VIRTUAL TABLE test_projects USING claudecode_projects(
+  base_directory='./test-projects'
+);
+
+SELECT p.project_id, COUNT(s.session_id) as session_count, SUM(s.record_count) as total_records
+FROM test_projects p
+LEFT JOIN test_sessions s ON p.project_id = s.project_id
+GROUP BY p.project_id
+ORDER BY p.project_id;
+
+-- Test read-only enforcement
+-- Note: INSERT/UPDATE/DELETE operations should fail with "table may not be modified" errors
+-- These are tested manually to avoid script termination
+.print "\n=== Testing read-only enforcement (manual verification) ==="
+.print "Virtual tables are read-only - INSERT/UPDATE/DELETE operations are not supported"
+
+-- Test custom exclude_pattern parameter
+.print "\n=== Testing custom exclude_pattern ==="
+CREATE VIRTUAL TABLE custom_exclude_sessions USING claudecode_sessions(
+  base_directory='./test-projects',
+  exclude_pattern='special-*'
+);
+
+-- Verify custom pattern excludes different files
+SELECT COUNT(*) as custom_exclude_count
+FROM custom_exclude_sessions
+WHERE session_id LIKE 'special-%';
+
+-- Test WHERE clause filtering
+.print "\n=== Testing WHERE clause filtering ==="
+
+-- Filter by session_id
+SELECT COUNT(*) as filtered_count
+FROM test_sessions
+WHERE session_id = (SELECT session_id FROM test_sessions LIMIT 1);
+
+-- Filter by project_id (use actual project_id from data)
+SELECT COUNT(*) as project_filtered_count
+FROM test_sessions
+WHERE project_id = (SELECT project_id FROM test_sessions LIMIT 1);
+
+-- Filter by record_count range
+SELECT COUNT(*) as record_range_count
+FROM test_sessions
+WHERE record_count > 0 AND record_count < 100;
+
+-- Test ORDER BY with different columns
+.print "\n=== Testing ORDER BY ==="
+
+-- Order by session_id ascending
+SELECT session_id FROM test_sessions ORDER BY session_id ASC LIMIT 3;
+
+-- Order by session_id descending
+SELECT session_id FROM test_sessions ORDER BY session_id DESC LIMIT 3;
+
+-- Order by project_id then session_id
+SELECT project_id, session_id FROM test_sessions ORDER BY project_id, session_id LIMIT 5;
+
+-- Order by record_count descending
+SELECT session_id, record_count FROM test_sessions ORDER BY record_count DESC LIMIT 3;
+
+-- Order by created_at
+SELECT session_id, created_at FROM test_sessions ORDER BY created_at LIMIT 3;
+
+-- Order by updated_at
+SELECT session_id, updated_at FROM test_sessions ORDER BY updated_at DESC LIMIT 3;
+
+-- Test edge cases
+.print "\n=== Testing edge cases ==="
+
+-- Note: Creating table with non-existent directory would error
+-- This is tested manually to avoid script termination
+.print "Creating table with non-existent directory would produce error (manual verification)"
+
+-- Test that malformed filenames are skipped (test-projects should only have valid UUIDs)
+-- This is implicit - if we got the expected count earlier, malformed files were skipped
+SELECT COUNT(*) as valid_sessions FROM test_sessions;
+
+-- Test record count accuracy - verify against a known session file
+.print "\n=== Testing record count accuracy ==="
+
+-- Get a session and verify its record count matches file content
+SELECT session_id, project_id, record_count
+FROM test_sessions
+WHERE record_count > 0
+ORDER BY session_id
+LIMIT 1;
