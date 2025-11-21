@@ -11,7 +11,9 @@ ASAN_CFLAGS = $(CFLAGS) -fsanitize=address -fno-omit-frame-pointer
 ASAN_LDFLAGS = $(LDFLAGS) -fsanitize=address
 ASAN_OBJECTS = $(patsubst src/%.c,build/asan/%.o,$(SOURCES))
 ASAN_TARGET = build/asan/claude_code.dylib
+ASAN_HARNESS = build/asan/test_harness
 
+# Default: build main extension only
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
@@ -26,7 +28,8 @@ build:
 clean:
 	rm -rf build
 
-test: $(TARGET)
+# Build everything and run all tests (regular + ASan)
+test: $(TARGET) $(ASAN_TARGET) $(ASAN_HARNESS)
 	./test/run_tests.sh
 
 # ASan build rules
@@ -44,12 +47,11 @@ build/asan:
 	mkdir -p build/asan
 
 # ASan test harness (avoids macOS SIP issues with DYLD_INSERT_LIBRARIES)
-ASAN_HARNESS = build/asan/test_harness
-
 $(ASAN_HARNESS): test/asan_harness.c | build/asan
 	$(CC) $(ASAN_CFLAGS) -L/opt/homebrew/Cellar/sqlite/3.51.0/lib -lsqlite3 -fsanitize=address -o $@ $<
 
+# Run just ASan tests (builds ASan binaries first)
 check: $(ASAN_TARGET) $(ASAN_HARNESS)
-	CLAUDE_PROJECTS_DIR=./test-projects $(ASAN_HARNESS) $(ASAN_TARGET)
+	@CLAUDE_PROJECTS_DIR=./test-projects $(ASAN_HARNESS) $(ASAN_TARGET)
 
 .PHONY: all clean test check

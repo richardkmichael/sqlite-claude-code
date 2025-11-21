@@ -1,22 +1,18 @@
 #!/bin/bash
-# Simple test runner for Claude Code extension
+# Test runner for Claude Code extension
 
 set -e  # Exit on error
 
 TEST_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$TEST_DIR")"
-# Allow override via CLAUDE_CODE_EXT for ASan builds
-EXTENSION="${CLAUDE_CODE_EXT:-$PROJECT_DIR/build/claude_code.dylib}"
+EXTENSION="$PROJECT_DIR/build/claude_code.dylib"
+ASAN_HARNESS="$PROJECT_DIR/build/asan/test_harness"
+ASAN_EXTENSION="$PROJECT_DIR/build/asan/claude_code.dylib"
 
 # Colors for output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
-
-# Export DYLD_INSERT_LIBRARIES if set (for ASan)
-if [ -n "$DYLD_INSERT_LIBRARIES" ]; then
-    export DYLD_INSERT_LIBRARIES
-fi
 
 echo "Running tests for Claude Code extension..."
 echo
@@ -46,34 +42,46 @@ for test_file in "$TEST_DIR"/*.test; do
     # Restore HOME for each test
     export HOME="$ORIGINAL_HOME"
 
-    # Set environment variable for env_config test
+    # Set environment variables for specific tests
     if [ "$test_name" = "env_config" ]; then
         export CLAUDE_PROJECTS_DIR="./test-projects"
-    elif [ "$test_name" = "missing_default" ] || [ "$test_name" = "readonly" ] || [ "$test_name" = "errors" ]; then
-        # These tests expect failures
+    elif [ "$test_name" = "missing_default" ]; then
         unset CLAUDE_PROJECTS_DIR
-        if [ "$test_name" = "missing_default" ]; then
-            export HOME="/tmp/nonexistent_home_$$"
-        fi
-        # These tests should fail, so invert the result
-        if sed "s|./build/claude_code.dylib|$EXTENSION|g" "$test_file" | sqlite3 :memory: 2>&1; then
+        export HOME="/tmp/nonexistent_home_$$"
+    else
+        unset CLAUDE_PROJECTS_DIR
+    fi
+
+    # Determine if this test expects failure
+    expects_failure=false
+    if [ "$test_name" = "missing_default" ] || [ "$test_name" = "readonly" ] || [ "$test_name" = "errors" ]; then
+        expects_failure=true
+    fi
+
+    # Run test and capture output
+    set +e
+    output=$(sed "s|./build/claude_code.dylib|$EXTENSION|g" "$test_file" | sqlite3 :memory: 2>&1)
+    exit_code=$?
+    set -e
+
+    if [ "$expects_failure" = true ]; then
+        if [ $exit_code -eq 0 ]; then
             echo -e "${RED}  FAIL (expected error but succeeded)${NC}"
+            echo "$output"
             ((TESTS_FAILED++))
         else
             echo -e "${GREEN}  PASS (correctly failed)${NC}"
             ((TESTS_PASSED++))
         fi
-        continue
     else
-        unset CLAUDE_PROJECTS_DIR
-    fi
-
-    if sed "s|./build/claude_code.dylib|$EXTENSION|g" "$test_file" | sqlite3 :memory: > /dev/null 2>&1; then
-        echo -e "${GREEN}  PASS${NC}"
-        ((TESTS_PASSED++))
-    else
-        echo -e "${RED}  FAIL${NC}"
-        ((TESTS_FAILED++))
+        if [ $exit_code -eq 0 ]; then
+            echo -e "${GREEN}  PASS${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}  FAIL${NC}"
+            echo "$output"
+            ((TESTS_FAILED++))
+        fi
     fi
 done
 
@@ -82,6 +90,23 @@ export HOME="$ORIGINAL_HOME"
 
 # Clean up
 unset CLAUDE_PROJECTS_DIR
+
+# Run ASan memory tests if harness exists
+if [ -f "$ASAN_HARNESS" ] && [ -f "$ASAN_EXTENSION" ]; then
+    echo "Running test: asan memory tests"
+    set +e
+    output=$(CLAUDE_PROJECTS_DIR=./test-projects "$ASAN_HARNESS" "$ASAN_EXTENSION" 2>&1)
+    exit_code=$?
+    set -e
+    if [ $exit_code -eq 0 ]; then
+        echo -e "${GREEN}  PASS${NC}"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}  FAIL${NC}"
+        echo "$output"
+        ((TESTS_FAILED++))
+    fi
+fi
 
 echo
 echo "================="
