@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "anthropic_api_docs": {
+      "type": "http",
+      "url": "https://docs.claude.com/mcp"
+    }
+  }
+}
