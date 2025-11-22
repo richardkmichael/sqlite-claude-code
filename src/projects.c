@@ -5,7 +5,7 @@
  */
 
 #include <sqlite3ext.h>
-extern const sqlite3_api_routines *sqlite3_api;  /* Defined in init.c */
+extern const sqlite3_api_routines *sqlite3_api; /* Defined in init.c */
 
 #include "common.h"
 
@@ -22,10 +22,10 @@ typedef struct ProjectsVTab {
  * Organizes all data about the project we're currently pointing at
  */
 typedef struct CurrentProject {
-  char name[256];           /* Directory name (project_id) */
-  char path[PATH_MAX];      /* Full path to directory */
-  time_t created_at;        /* Creation time */
-  time_t updated_at;        /* Modification time */
+  char name[256];      /* Directory name (project_id) */
+  char path[PATH_MAX]; /* Full path to directory */
+  time_t created_at;   /* Creation time */
+  time_t updated_at;   /* Modification time */
 } CurrentProject;
 
 /*
@@ -43,15 +43,9 @@ typedef struct ProjectsCursor {
 /*
  * xConnect/xCreate - Create a new virtual table instance
  */
-static int projects_connect(
-  sqlite3 *db,
-  void *pAux UNUSED,
-  int argc,
-  const char *const *argv,
-  sqlite3_vtab **ppVTab,
-  char **pzErr
-) {
-  MARK_UNUSED(pAux);  /* Required by interface, unused in our implementation */
+static int projects_connect(sqlite3 *db, void *pAux UNUSED, int argc, const char *const *argv,
+                            sqlite3_vtab **ppVTab, char **pzErr) {
+  MARK_UNUSED(pAux); /* Required by interface, unused in our implementation */
 
   ProjectsVTab *pTab = sqlite3_malloc(sizeof(ProjectsVTab));
   if (!pTab) {
@@ -81,14 +75,12 @@ static int projects_connect(
   }
 
   /* Declare table schema */
-  int rc = sqlite3_declare_vtab(db,
-    "CREATE TABLE projects("
-    "  project_id TEXT,"     /* Directory name */
-    "  directory TEXT,"      /* Full path */
-    "  created_at INTEGER,"  /* ctime */
-    "  updated_at INTEGER"   /* mtime */
-    ")"
-  );
+  int rc = sqlite3_declare_vtab(db, "CREATE TABLE projects("
+                                    "  project_id TEXT,"    /* Directory name */
+                                    "  directory TEXT,"     /* Full path */
+                                    "  created_at INTEGER," /* ctime */
+                                    "  updated_at INTEGER"  /* mtime */
+                                    ")");
 
   if (rc != SQLITE_OK) {
     sqlite3_free(pTab);
@@ -103,7 +95,7 @@ static int projects_connect(
  * xDisconnect/xDestroy - Destroy a virtual table instance
  */
 static int projects_disconnect(sqlite3_vtab *pVTab) {
-  ProjectsVTab *pTab = (ProjectsVTab*)pVTab;
+  ProjectsVTab *pTab = (ProjectsVTab *)pVTab;
   sqlite3_free(pTab);
   return SQLITE_OK;
 }
@@ -122,7 +114,7 @@ static int projects_disconnect(sqlite3_vtab *pVTab) {
  * Phase 5: Will add optimized plans for filtered queries
  */
 static int projects_best_index(sqlite3_vtab *tab UNUSED, sqlite3_index_info *pIdxInfo) {
-  MARK_UNUSED(tab);  /* Required by interface, unused for simple full scan */
+  MARK_UNUSED(tab); /* Required by interface, unused for simple full scan */
 
   /* Plan ID 1: Full directory scan (our only plan for now) */
   pIdxInfo->idxNum = 1;
@@ -154,7 +146,7 @@ static int projects_open(sqlite3_vtab *pVTab UNUSED, sqlite3_vtab_cursor **ppCur
  * xClose - Close a cursor
  */
 static int projects_close(sqlite3_vtab_cursor *cur) {
-  ProjectsCursor *pCur = (ProjectsCursor*)cur;
+  ProjectsCursor *pCur = (ProjectsCursor *)cur;
 
   if (pCur->dir_handle) {
     closedir(pCur->dir_handle);
@@ -170,10 +162,11 @@ static int projects_close(sqlite3_vtab_cursor *cur) {
  * Each row represents one project (subdirectory in base_directory).
  * Iterates through directory entries until finding the next valid directory.
  *
- * TODO: Add regex pattern to filter project directories (e.g., exclude non-project dirs)
+ * TODO: Add regex pattern to filter project directories (e.g., exclude
+ * non-project dirs)
  */
 static int projects_next(sqlite3_vtab_cursor *cur) {
-  ProjectsCursor *pCur = (ProjectsCursor*)cur;
+  ProjectsCursor *pCur = (ProjectsCursor *)cur;
   struct dirent *entry;
 
   while ((entry = readdir(pCur->dir_handle)) != NULL) {
@@ -183,8 +176,8 @@ static int projects_next(sqlite3_vtab_cursor *cur) {
     }
 
     /* Build full path */
-    snprintf(pCur->current.path, sizeof(pCur->current.path), "%s/%s",
-             pCur->base_path, entry->d_name);
+    snprintf(pCur->current.path, sizeof(pCur->current.path), "%s/%s", pCur->base_path,
+             entry->d_name);
 
     /* Check if it's a directory securely (ignore symlinks) */
     struct stat st;
@@ -218,21 +211,16 @@ static int projects_next(sqlite3_vtab_cursor *cur) {
  * Phase 2: No constraints supported yet, parameters unused.
  * Phase 5: Will use idxNum to select optimized query plans.
  */
-static int projects_filter(
-  sqlite3_vtab_cursor *cur,
-  int idxNum UNUSED,
-  const char *idxStr UNUSED,
-  int argc UNUSED,
-  sqlite3_value **argv UNUSED
-) {
+static int projects_filter(sqlite3_vtab_cursor *cur, int idxNum UNUSED, const char *idxStr UNUSED,
+                           int argc UNUSED, sqlite3_value **argv UNUSED) {
   /* Phase 2: All parameters unused (no query optimization yet) */
   MARK_UNUSED(idxNum);
   MARK_UNUSED(idxStr);
   MARK_UNUSED(argc);
   MARK_UNUSED(argv);
 
-  ProjectsCursor *pCur = (ProjectsCursor*)cur;
-  ProjectsVTab *pTab = (ProjectsVTab*)cur->pVtab;
+  ProjectsCursor *pCur = (ProjectsCursor *)cur;
+  ProjectsVTab *pTab = (ProjectsVTab *)cur->pVtab;
 
   /* Copy base path from vtab config */
   strncpy(pCur->base_path, pTab->config.base_directory, sizeof(pCur->base_path) - 1);
@@ -242,7 +230,7 @@ static int projects_filter(
   pCur->dir_handle = opendir(pCur->base_path);
   if (!pCur->dir_handle) {
     pCur->base.pVtab->zErrMsg = sqlite3_mprintf("Cannot open directory: %s (errno=%d, %s)",
-                                                  pCur->base_path, errno, strerror(errno));
+                                                pCur->base_path, errno, strerror(errno));
     return SQLITE_ERROR;
   }
 
@@ -257,39 +245,35 @@ static int projects_filter(
  * xEof - Check if the cursor has reached the end
  */
 static int projects_eof(sqlite3_vtab_cursor *cur) {
-  ProjectsCursor *pCur = (ProjectsCursor*)cur;
+  ProjectsCursor *pCur = (ProjectsCursor *)cur;
   return pCur->eof;
 }
 
 /*
  * xColumn - Return a column value
  */
-static int projects_column(
-  sqlite3_vtab_cursor *cur,
-  sqlite3_context *ctx,
-  int col
-) {
-  ProjectsCursor *pCur = (ProjectsCursor*)cur;
+static int projects_column(sqlite3_vtab_cursor *cur, sqlite3_context *ctx, int col) {
+  ProjectsCursor *pCur = (ProjectsCursor *)cur;
 
   switch (col) {
-    case 0:  /* project_id */
-      sqlite3_result_text(ctx, pCur->current.name, -1, SQLITE_TRANSIENT);
-      break;
+  case 0: /* project_id */
+    sqlite3_result_text(ctx, pCur->current.name, -1, SQLITE_TRANSIENT);
+    break;
 
-    case 1:  /* directory */
-      sqlite3_result_text(ctx, pCur->current.path, -1, SQLITE_TRANSIENT);
-      break;
+  case 1: /* directory */
+    sqlite3_result_text(ctx, pCur->current.path, -1, SQLITE_TRANSIENT);
+    break;
 
-    case 2:  /* created_at */
-      sqlite3_result_int64(ctx, pCur->current.created_at);
-      break;
+  case 2: /* created_at */
+    sqlite3_result_int64(ctx, pCur->current.created_at);
+    break;
 
-    case 3:  /* updated_at */
-      sqlite3_result_int64(ctx, pCur->current.updated_at);
-      break;
+  case 3: /* updated_at */
+    sqlite3_result_int64(ctx, pCur->current.updated_at);
+    break;
 
-    default:
-      return SQLITE_ERROR;
+  default:
+    return SQLITE_ERROR;
   }
 
   return SQLITE_OK;
@@ -299,7 +283,7 @@ static int projects_column(
  * xRowid - Return the rowid
  */
 static int projects_rowid(sqlite3_vtab_cursor *cur, sqlite3_int64 *pRowid) {
-  ProjectsCursor *pCur = (ProjectsCursor*)cur;
+  ProjectsCursor *pCur = (ProjectsCursor *)cur;
   *pRowid = pCur->rowid;
   return SQLITE_OK;
 }
@@ -308,31 +292,31 @@ static int projects_rowid(sqlite3_vtab_cursor *cur, sqlite3_int64 *pRowid) {
  * Virtual table module definition
  */
 sqlite3_module projects_module = {
-  0,                      /* iVersion */
-  projects_connect,       /* xCreate */
-  projects_connect,       /* xConnect */
-  projects_best_index,    /* xBestIndex */
-  projects_disconnect,    /* xDisconnect */
-  projects_disconnect,    /* xDestroy */
-  projects_open,          /* xOpen */
-  projects_close,         /* xClose */
-  projects_filter,        /* xFilter */
-  projects_next,          /* xNext */
-  projects_eof,           /* xEof */
-  projects_column,        /* xColumn */
-  projects_rowid,         /* xRowid */
-  NULL,                   /* xUpdate */
-  NULL,                   /* xBegin */
-  NULL,                   /* xSync */
-  NULL,                   /* xCommit */
-  NULL,                   /* xRollback */
-  NULL,                   /* xFindFunction */
-  NULL,                   /* xRename */
-  NULL,                   /* xSavepoint */
-  NULL,                   /* xRelease */
-  NULL,                   /* xRollbackTo */
-  NULL,                   /* xShadowName */
-  NULL                    /* xIntegrity */
+    0,                   /* iVersion */
+    projects_connect,    /* xCreate */
+    projects_connect,    /* xConnect */
+    projects_best_index, /* xBestIndex */
+    projects_disconnect, /* xDisconnect */
+    projects_disconnect, /* xDestroy */
+    projects_open,       /* xOpen */
+    projects_close,      /* xClose */
+    projects_filter,     /* xFilter */
+    projects_next,       /* xNext */
+    projects_eof,        /* xEof */
+    projects_column,     /* xColumn */
+    projects_rowid,      /* xRowid */
+    NULL,                /* xUpdate */
+    NULL,                /* xBegin */
+    NULL,                /* xSync */
+    NULL,                /* xCommit */
+    NULL,                /* xRollback */
+    NULL,                /* xFindFunction */
+    NULL,                /* xRename */
+    NULL,                /* xSavepoint */
+    NULL,                /* xRelease */
+    NULL,                /* xRollbackTo */
+    NULL,                /* xShadowName */
+    NULL                 /* xIntegrity */
 };
 
 /*

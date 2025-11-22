@@ -1,0 +1,38 @@
+# Approximates SQLite coding style conventions.
+# SQLite doesn't provide a clang-format config; this is a best-effort match.
+# See: https://www.sqlite.org/src/doc/trunk/doc/lemon.html (style notes)
+---
+Language: C
+BasedOnStyle: LLVM
+
+# Indentation: SQLite uses 2 spaces
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+
+# Line width: SQLite traditionally uses 80 columns, but 100 is modern and preferred
+ColumnLimit: 100
+
+# Braces: SQLite puts opening brace on same line
+BreakBeforeBraces: Attach
+
+# Pointers: SQLite attaches * to variable name (char *p, not char* p)
+PointerAlignment: Right
+
+# Don't collapse short functions/statements
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+
+# Spaces
+SpaceBeforeParens: ControlStatements
+SpaceAfterCStyleCast: false
+SpacesInParentheses: false
+
+# Keep include order as-is (SQLite has specific ordering conventions)
+SortIncludes: Never
+
+# Align macros and trailing comments
+AlignConsecutiveMacros: true
+AlignTrailingComments: true

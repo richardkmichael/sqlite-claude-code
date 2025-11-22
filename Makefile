@@ -1,8 +1,13 @@
 CC = clang
-CFLAGS = -Wall -Wextra -Werror -fPIC -I/opt/homebrew/Cellar/sqlite/3.51.0/include
+CFLAGS = -Wall -Wextra -Werror -fPIC -isystem /opt/homebrew/Cellar/sqlite/3.51.0/include -isystem src/vendor
 LDFLAGS = -L/opt/homebrew/Cellar/sqlite/3.51.0/lib -lsqlite3 -dynamiclib
 
-SOURCES = src/init.c src/common.c src/projects.c src/sessions.c src/messages.c src/functions.c src/cJSON.c
+# Our source files (for formatting/linting)
+OUR_SOURCES = src/init.c src/common.c src/projects.c src/sessions.c src/messages.c src/functions.c
+OUR_HEADERS = src/common.h
+
+# All sources including vendored code
+SOURCES = $(OUR_SOURCES) src/vendor/cJSON.c
 OBJECTS = $(patsubst src/%.c,build/%.o,$(SOURCES))
 TARGET = build/claude_code.dylib
 
@@ -20,6 +25,7 @@ $(TARGET): $(OBJECTS)
 	$(CC) $(LDFLAGS) -o $@ $^
 
 build/%.o: src/%.c | build
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 build:
@@ -37,10 +43,12 @@ $(ASAN_TARGET): $(ASAN_OBJECTS)
 	$(CC) $(ASAN_LDFLAGS) -o $@ $^
 
 build/asan/%.o: src/%.c | build/asan
+	@mkdir -p $(dir $@)
 	$(CC) $(ASAN_CFLAGS) -c -o $@ $<
 
 # cJSON is third-party code - suppress deprecation warnings for sprintf
-build/asan/cJSON.o: src/cJSON.c | build/asan
+build/asan/vendor/cJSON.o: src/vendor/cJSON.c | build/asan
+	@mkdir -p $(dir $@)
 	$(CC) $(ASAN_CFLAGS) -Wno-deprecated-declarations -c -o $@ $<
 
 build/asan:
@@ -54,4 +62,16 @@ $(ASAN_HARNESS): test/asan_harness.c | build/asan
 check: $(ASAN_TARGET) $(ASAN_HARNESS)
 	@CLAUDE_PROJECTS_DIR=./test-projects $(ASAN_HARNESS) $(ASAN_TARGET)
 
-.PHONY: all clean test check
+# Code quality tools
+LLVM_PATH = /opt/homebrew/opt/llvm/bin
+
+format:
+	$(LLVM_PATH)/clang-format -i $(OUR_SOURCES) $(OUR_HEADERS)
+
+format-check:
+	$(LLVM_PATH)/clang-format --dry-run --Werror $(OUR_SOURCES) $(OUR_HEADERS)
+
+lint:
+	$(LLVM_PATH)/clang-tidy $(OUR_SOURCES) -- $(CFLAGS)
+
+.PHONY: all clean test check format format-check lint

@@ -1,0 +1,25 @@
+# Static analysis for C code
+# Focuses on bug detection, not style (style handled by clang-format)
+---
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  clang-analyzer-*,
+  misc-redundant-expression,
+  misc-unused-parameters,
+  readability-duplicate-include,
+  readability-misleading-indentation,
+  readability-redundant-preprocessor
+
+# Treat warnings as errors in CI
+WarningsAsErrors: ''
+
+# Only analyze our own headers, not system/vendored code
+HeaderFilterRegex: 'src/common\.h$'
+SystemHeaders: false
+
+CheckOptions:
+  # Allow unused parameters marked with UNUSED macro
+  - key: misc-unused-parameters.StrictMode
+    value: false

@@ -17,23 +17,24 @@ DIR *opendir(const char *name) {
   }
 
   snprintf(dir->dir_path, PATH_MAX, "%s\\*", name);
-  
+
   dir->hFind = FindFirstFileA(dir->dir_path, &dir->data);
   if (dir->hFind == INVALID_HANDLE_VALUE) {
     free(dir);
     return NULL;
   }
-  
+
   /* Store original path for validation */
   strncpy(dir->dir_path, name, PATH_MAX - 1);
   dir->dir_path[PATH_MAX - 1] = '\0';
-  
+
   dir->first_read = 1;
   return dir;
 }
 
 struct dirent *readdir(DIR *dir) {
-  if (!dir) return NULL;
+  if (!dir)
+    return NULL;
 
   if (dir->first_read) {
     dir->first_read = 0;
@@ -50,7 +51,8 @@ struct dirent *readdir(DIR *dir) {
 }
 
 int closedir(DIR *dir) {
-  if (!dir) return -1;
+  if (!dir)
+    return -1;
   if (dir->hFind != INVALID_HANDLE_VALUE) {
     FindClose(dir->hFind);
   }
@@ -88,14 +90,18 @@ int validate_directory(DIR *dir, const char *path UNUSED) {
   struct stat st;
 
 #ifdef _WIN32
-  /* Windows: Fallback to path-based check (TOCTOU risk accepted due to OS limits) */
+  /* Windows: Fallback to path-based check (TOCTOU risk accepted due to OS
+   * limits) */
   if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
     return 1;
   }
 #else
   /* POSIX: Secure check using file descriptor */
-  if (dir && fstat(dirfd(dir), &st) == 0 && S_ISDIR(st.st_mode)) {
-    return 1;
+  if (dir) {
+    int fd = dirfd(dir);
+    if (fd >= 0 && fstat(fd, &st) == 0 && S_ISDIR(st.st_mode)) {
+      return 1;
+    }
   }
 #endif
 
@@ -105,8 +111,7 @@ int validate_directory(DIR *dir, const char *path UNUSED) {
 /*
  * Helper: Safely copy string with bounds checking
  */
-void copy_config_string(char *dest, size_t dest_size,
-                        const char *src, size_t src_len) {
+void copy_config_string(char *dest, size_t dest_size, const char *src, size_t src_len) {
   size_t copy_len = src_len < dest_size - 1 ? src_len : dest_size - 1;
   strncpy(dest, src, copy_len);
   dest[copy_len] = '\0';
@@ -136,24 +141,22 @@ int parse_kv_argument(const char *arg, vtab_config *config) {
   /* Strip surrounding single quotes from value if present */
   size_t value_len = strlen(value);
   if (value_len >= 2 && value[0] == '\'' && value[value_len - 1] == '\'') {
-    value++;  /* Skip opening quote */
-    value_len -= 2;  /* Remove both quotes from length */
+    value++;        /* Skip opening quote */
+    value_len -= 2; /* Remove both quotes from length */
   }
 
-  #define KEY_MATCHES(literal) \
-    (key_len == (sizeof(literal) - 1) && strncmp(arg, literal, key_len) == 0)
+#define KEY_MATCHES(literal)                                                                       \
+  (key_len == (sizeof(literal) - 1) && strncmp(arg, literal, key_len) == 0)
 
   if (KEY_MATCHES("base_directory")) {
-    copy_config_string(config->base_directory, sizeof(config->base_directory),
-                       value, value_len);
+    copy_config_string(config->base_directory, sizeof(config->base_directory), value, value_len);
     return 0;
   } else if (KEY_MATCHES("exclude_pattern")) {
-    copy_config_string(config->exclude_pattern, sizeof(config->exclude_pattern),
-                       value, value_len);
+    copy_config_string(config->exclude_pattern, sizeof(config->exclude_pattern), value, value_len);
     return 0;
   }
 
-  #undef KEY_MATCHES
+#undef KEY_MATCHES
 
   /* Unknown parameter - ignore for forward compatibility */
   return 0;

@@ -5,7 +5,8 @@
  * for zero-setup user experience.
  *
  * Thread Safety Model:
- *   - One-time setup (tables, metadata) runs once per process, protected by mutex
+ *   - One-time setup (tables, metadata) runs once per process, protected by
+ * mutex
  *   - Per-connection setup (modules, functions) runs for each db connection
  *   - All module structs are read-only after compilation
  *
@@ -37,11 +38,7 @@ __declspec(dllexport)
  * For claude_code.dylib, SQLite expects sqlite3_claudecode_init
  * (underscores in filename are removed from the entry point name).
  */
-int sqlite3_claudecode_init(
-  sqlite3 *db,
-  char **pzErrMsg,
-  const sqlite3_api_routines *pApi
-) {
+int sqlite3_claudecode_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi) {
   int rc;
 
   /* Initialize SQLite API pointer - required before any sqlite3_* calls */
@@ -104,10 +101,10 @@ int sqlite3_claudecode_init(
       if (stat(default_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
         sqlite3_mutex_leave(mutex);
         if (pzErrMsg) {
-          *pzErrMsg = sqlite3_mprintf(
-            "Default directory %s does not exist. "
-            "Set CLAUDE_PROJECTS_DIR environment variable to specify projects directory.",
-            default_dir);
+          *pzErrMsg = sqlite3_mprintf("Default directory %s does not exist. "
+                                      "Set CLAUDE_PROJECTS_DIR environment "
+                                      "variable to specify projects directory.",
+                                      default_dir);
         }
         return SQLITE_ERROR;
       }

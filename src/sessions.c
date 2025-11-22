@@ -6,20 +6,20 @@
  */
 
 #include <sqlite3ext.h>
-extern const sqlite3_api_routines *sqlite3_api;  /* Defined in init.c */
+extern const sqlite3_api_routines *sqlite3_api; /* Defined in init.c */
 
 #include "common.h"
 
 /* Query plan constants */
-#define PLAN_FULL_SCAN       1
-#define PLAN_PROJECT_FILTER  2
+#define PLAN_FULL_SCAN      1
+#define PLAN_PROJECT_FILTER 2
 
 /* Column indices (must match schema order) */
-#define COL_SESSION_ID  0
-#define COL_PROJECT_ID  1
-#define COL_FILE_PATH   2
-#define COL_CREATED_AT  3
-#define COL_UPDATED_AT  4
+#define COL_SESSION_ID 0
+#define COL_PROJECT_ID 1
+#define COL_FILE_PATH  2
+#define COL_CREATED_AT 3
+#define COL_UPDATED_AT 4
 
 /*
  * Sessions virtual table structure
@@ -34,19 +34,19 @@ typedef struct SessionsVTab {
  * Organizes all data about the session we're currently pointing at
  */
 typedef struct CurrentSession {
-  char id[64];              /* Session UUID (from filename) */
-  char path[PATH_MAX];      /* Full path to .jsonl file */
-  time_t created_at;        /* File creation time */
-  time_t updated_at;        /* File modification time */
+  char id[64];         /* Session UUID (from filename) */
+  char path[PATH_MAX]; /* Full path to .jsonl file */
+  time_t created_at;   /* File creation time */
+  time_t updated_at;   /* File modification time */
 } CurrentSession;
 
 /*
  * Current project being scanned for sessions
  */
 typedef struct CurrentProjectScan {
-  char id[256];             /* Project ID (directory name) */
-  char path[PATH_MAX];      /* Full path to project directory */
-  DIR *sessions_dir;        /* Open directory handle for sessions */
+  char id[256];        /* Project ID (directory name) */
+  char path[PATH_MAX]; /* Full path to project directory */
+  DIR *sessions_dir;   /* Open directory handle for sessions */
 } CurrentProjectScan;
 
 /*
@@ -59,7 +59,7 @@ typedef struct SessionsCursor {
   DIR *projects_dir;
   CurrentProjectScan project;
   CurrentSession session;
-  char filter_project_id[256];  /* Project ID filter (empty = no filter) */
+  char filter_project_id[256]; /* Project ID filter (empty = no filter) */
   int eof;
   sqlite3_int64 rowid;
 } SessionsCursor;
@@ -70,7 +70,7 @@ typedef struct SessionsCursor {
  */
 static int is_excluded_file(const char *filename, const char *pattern) {
   if (!pattern || pattern[0] == '\0') {
-    return 0;  /* No exclusion pattern */
+    return 0; /* No exclusion pattern */
   }
 
   /* Simple prefix matching */
@@ -87,15 +87,9 @@ static int is_excluded_file(const char *filename, const char *pattern) {
 /*
  * xConnect/xCreate - Create a new sessions virtual table instance
  */
-static int sessions_connect(
-  sqlite3 *db,
-  void *pAux UNUSED,
-  int argc,
-  const char *const *argv,
-  sqlite3_vtab **ppVTab,
-  char **pzErr
-) {
-  MARK_UNUSED(pAux);  /* Required by interface, unused in our implementation */
+static int sessions_connect(sqlite3 *db, void *pAux UNUSED, int argc, const char *const *argv,
+                            sqlite3_vtab **ppVTab, char **pzErr) {
+  MARK_UNUSED(pAux); /* Required by interface, unused in our implementation */
 
   SessionsVTab *pTab = sqlite3_malloc(sizeof(SessionsVTab));
   if (!pTab) {
@@ -115,8 +109,8 @@ static int sessions_connect(
   }
 
   /* Default exclusion pattern */
-  copy_config_string(pTab->config.exclude_pattern, sizeof(pTab->config.exclude_pattern),
-                     "agent-*", 7);
+  copy_config_string(pTab->config.exclude_pattern, sizeof(pTab->config.exclude_pattern), "agent-*",
+                     7);
 
   /* Parse arguments */
   for (int i = 3; i < argc; i++) {
@@ -128,15 +122,13 @@ static int sessions_connect(
   }
 
   /* Declare table schema */
-  int rc = sqlite3_declare_vtab(db,
-    "CREATE TABLE sessions("
-    "  session_id TEXT,"     /* UUID from filename */
-    "  project_id TEXT,"     /* Foreign key to projects */
-    "  file_path TEXT,"      /* Full path to .jsonl file */
-    "  created_at INTEGER,"  /* ctime */
-    "  updated_at INTEGER"   /* mtime */
-    ")"
-  );
+  int rc = sqlite3_declare_vtab(db, "CREATE TABLE sessions("
+                                    "  session_id TEXT,"    /* UUID from filename */
+                                    "  project_id TEXT,"    /* Foreign key to projects */
+                                    "  file_path TEXT,"     /* Full path to .jsonl file */
+                                    "  created_at INTEGER," /* ctime */
+                                    "  updated_at INTEGER"  /* mtime */
+                                    ")");
 
   if (rc != SQLITE_OK) {
     sqlite3_free(pTab);
@@ -151,7 +143,7 @@ static int sessions_connect(
  * xDisconnect/xDestroy
  */
 static int sessions_disconnect(sqlite3_vtab *pVTab) {
-  SessionsVTab *pTab = (SessionsVTab*)pVTab;
+  SessionsVTab *pTab = (SessionsVTab *)pVTab;
   sqlite3_free(pTab);
   return SQLITE_OK;
 }
@@ -190,7 +182,7 @@ static int sessions_best_index(sqlite3_vtab *tab UNUSED, sqlite3_index_info *pId
     pIdxInfo->idxNum = PLAN_PROJECT_FILTER;
     pIdxInfo->aConstraintUsage[project_constraint_idx].argvIndex = 1;
     pIdxInfo->aConstraintUsage[project_constraint_idx].omit = 1;
-    pIdxInfo->estimatedCost = 100.0;   /* Scan one directory */
+    pIdxInfo->estimatedCost = 100.0; /* Scan one directory */
     pIdxInfo->estimatedRows = 50;
   } else {
     /* Full scan of all session files */
@@ -222,7 +214,7 @@ static int sessions_open(sqlite3_vtab *pVTab UNUSED, sqlite3_vtab_cursor **ppCur
  * xClose - Close a cursor
  */
 static int sessions_close(sqlite3_vtab_cursor *cur) {
-  SessionsCursor *pCur = (SessionsCursor*)cur;
+  SessionsCursor *pCur = (SessionsCursor *)cur;
 
   if (pCur->project.sessions_dir) {
     closedir(pCur->project.sessions_dir);
@@ -239,8 +231,8 @@ static int sessions_close(sqlite3_vtab_cursor *cur) {
  * xNext - Advance to next session file
  */
 static int sessions_next(sqlite3_vtab_cursor *cur) {
-  SessionsCursor *pCur = (SessionsCursor*)cur;
-  SessionsVTab *pTab = (SessionsVTab*)cur->pVtab;
+  SessionsCursor *pCur = (SessionsCursor *)cur;
+  SessionsVTab *pTab = (SessionsVTab *)cur->pVtab;
   struct dirent *entry;
 
   while (1) {
@@ -266,16 +258,16 @@ static int sessions_next(sqlite3_vtab_cursor *cur) {
         }
 
         /* Build full path */
-        snprintf(pCur->session.path, sizeof(pCur->session.path),
-                 "%s/%s", pCur->project.path, name);
+        snprintf(pCur->session.path, sizeof(pCur->session.path), "%s/%s", pCur->project.path, name);
 
         /* Get file stats (lstat to detect symlinks) */
         struct stat st;
         if (lstat(pCur->session.path, &st) != 0) {
-          continue;  /* Skip if stat fails */
+          continue; /* Skip if stat fails */
         }
 
-        /* Security: Ignore symbolic links to prevent arbitrary file metadata leak */
+        /* Security: Ignore symbolic links to prevent arbitrary file metadata
+         * leak */
         if (S_ISLNK(st.st_mode)) {
           continue;
         }
@@ -306,8 +298,7 @@ static int sessions_next(sqlite3_vtab_cursor *cur) {
       }
 
       /* Build project path */
-      snprintf(pCur->project.path, sizeof(pCur->project.path),
-               "%s/%s", pCur->base_path, name);
+      snprintf(pCur->project.path, sizeof(pCur->project.path), "%s/%s", pCur->base_path, name);
 
       /* Check if it's a directory */
       struct stat st;
@@ -316,8 +307,7 @@ static int sessions_next(sqlite3_vtab_cursor *cur) {
       }
 
       /* Store project_id */
-      copy_config_string(pCur->project.id, sizeof(pCur->project.id),
-                         name, strlen(name));
+      copy_config_string(pCur->project.id, sizeof(pCur->project.id), name, strlen(name));
 
       /* Open sessions directory securely */
       DIR *dir = opendir(pCur->project.path);
@@ -371,8 +361,7 @@ static int filter_by_project(SessionsCursor *pCur, const char *project_id) {
     }
 
     /* Build project path */
-    snprintf(pCur->project.path, sizeof(pCur->project.path),
-             "%s/%s", pCur->base_path, name);
+    snprintf(pCur->project.path, sizeof(pCur->project.path), "%s/%s", pCur->base_path, name);
 
     /* Check if it's a directory */
     struct stat st;
@@ -381,8 +370,7 @@ static int filter_by_project(SessionsCursor *pCur, const char *project_id) {
     }
 
     /* Store project_id */
-    copy_config_string(pCur->project.id, sizeof(pCur->project.id),
-                       name, strlen(name));
+    copy_config_string(pCur->project.id, sizeof(pCur->project.id), name, strlen(name));
 
     /* Open sessions directory securely */
     DIR *dir = opendir(pCur->project.path);
@@ -390,7 +378,7 @@ static int filter_by_project(SessionsCursor *pCur, const char *project_id) {
       /* Verify it's a real directory */
       if (validate_directory(dir, pCur->project.path)) {
         pCur->project.sessions_dir = dir;
-        return 1;  /* Success */
+        return 1; /* Success */
       }
       closedir(dir);
     }
@@ -413,17 +401,12 @@ static int filter_by_project(SessionsCursor *pCur, const char *project_id) {
  *   PLAN_FULL_SCAN - Scan all project directories
  *   PLAN_PROJECT_FILTER - Scan only matching project_id directory
  */
-static int sessions_filter(
-  sqlite3_vtab_cursor *cur,
-  int idxNum,
-  const char *idxStr UNUSED,
-  int argc,
-  sqlite3_value **argv
-) {
-  MARK_UNUSED(idxStr);  /* We use idxNum, not idxStr for plan selection */
+static int sessions_filter(sqlite3_vtab_cursor *cur, int idxNum, const char *idxStr UNUSED,
+                           int argc, sqlite3_value **argv) {
+  MARK_UNUSED(idxStr); /* We use idxNum, not idxStr for plan selection */
 
-  SessionsCursor *pCur = (SessionsCursor*)cur;
-  SessionsVTab *pTab = (SessionsVTab*)cur->pVtab;
+  SessionsCursor *pCur = (SessionsCursor *)cur;
+  SessionsVTab *pTab = (SessionsVTab *)cur->pVtab;
 
   /* Copy base path */
   strncpy(pCur->base_path, pTab->config.base_directory, sizeof(pCur->base_path) - 1);
@@ -448,7 +431,7 @@ static int sessions_filter(
     const char *project_id = (const char *)sqlite3_value_text(argv[0]);
     if (project_id && project_id[0] != '\0') {
       if (!filter_by_project(pCur, project_id)) {
-        return SQLITE_OK;  /* Project not found, eof already set */
+        return SQLITE_OK; /* Project not found, eof already set */
       }
     }
   }
@@ -461,43 +444,39 @@ static int sessions_filter(
  * xEof
  */
 static int sessions_eof(sqlite3_vtab_cursor *cur) {
-  SessionsCursor *pCur = (SessionsCursor*)cur;
+  SessionsCursor *pCur = (SessionsCursor *)cur;
   return pCur->eof;
 }
 
 /*
  * xColumn - Return column value
  */
-static int sessions_column(
-  sqlite3_vtab_cursor *cur,
-  sqlite3_context *ctx,
-  int col
-) {
-  SessionsCursor *pCur = (SessionsCursor*)cur;
+static int sessions_column(sqlite3_vtab_cursor *cur, sqlite3_context *ctx, int col) {
+  SessionsCursor *pCur = (SessionsCursor *)cur;
 
   switch (col) {
-    case 0:  /* session_id */
-      sqlite3_result_text(ctx, pCur->session.id, -1, SQLITE_TRANSIENT);
-      break;
+  case 0: /* session_id */
+    sqlite3_result_text(ctx, pCur->session.id, -1, SQLITE_TRANSIENT);
+    break;
 
-    case 1:  /* project_id */
-      sqlite3_result_text(ctx, pCur->project.id, -1, SQLITE_TRANSIENT);
-      break;
+  case 1: /* project_id */
+    sqlite3_result_text(ctx, pCur->project.id, -1, SQLITE_TRANSIENT);
+    break;
 
-    case 2:  /* file_path */
-      sqlite3_result_text(ctx, pCur->session.path, -1, SQLITE_TRANSIENT);
-      break;
+  case 2: /* file_path */
+    sqlite3_result_text(ctx, pCur->session.path, -1, SQLITE_TRANSIENT);
+    break;
 
-    case 3:  /* created_at */
-      sqlite3_result_int64(ctx, pCur->session.created_at);
-      break;
+  case 3: /* created_at */
+    sqlite3_result_int64(ctx, pCur->session.created_at);
+    break;
 
-    case 4:  /* updated_at */
-      sqlite3_result_int64(ctx, pCur->session.updated_at);
-      break;
+  case 4: /* updated_at */
+    sqlite3_result_int64(ctx, pCur->session.updated_at);
+    break;
 
-    default:
-      return SQLITE_ERROR;
+  default:
+    return SQLITE_ERROR;
   }
 
   return SQLITE_OK;
@@ -507,7 +486,7 @@ static int sessions_column(
  * xRowid
  */
 static int sessions_rowid(sqlite3_vtab_cursor *cur, sqlite3_int64 *pRowid) {
-  SessionsCursor *pCur = (SessionsCursor*)cur;
+  SessionsCursor *pCur = (SessionsCursor *)cur;
   *pRowid = pCur->rowid;
   return SQLITE_OK;
 }
@@ -516,31 +495,31 @@ static int sessions_rowid(sqlite3_vtab_cursor *cur, sqlite3_int64 *pRowid) {
  * Sessions virtual table module
  */
 sqlite3_module sessions_module = {
-  0,                      /* iVersion */
-  sessions_connect,       /* xCreate */
-  sessions_connect,       /* xConnect */
-  sessions_best_index,    /* xBestIndex */
-  sessions_disconnect,    /* xDisconnect */
-  sessions_disconnect,    /* xDestroy */
-  sessions_open,          /* xOpen */
-  sessions_close,         /* xClose */
-  sessions_filter,        /* xFilter */
-  sessions_next,          /* xNext */
-  sessions_eof,           /* xEof */
-  sessions_column,        /* xColumn */
-  sessions_rowid,         /* xRowid */
-  NULL,                   /* xUpdate */
-  NULL,                   /* xBegin */
-  NULL,                   /* xSync */
-  NULL,                   /* xCommit */
-  NULL,                   /* xRollback */
-  NULL,                   /* xFindFunction */
-  NULL,                   /* xRename */
-  NULL,                   /* xSavepoint */
-  NULL,                   /* xRelease */
-  NULL,                   /* xRollbackTo */
-  NULL,                   /* xShadowName */
-  NULL                    /* xIntegrity */
+    0,                   /* iVersion */
+    sessions_connect,    /* xCreate */
+    sessions_connect,    /* xConnect */
+    sessions_best_index, /* xBestIndex */
+    sessions_disconnect, /* xDisconnect */
+    sessions_disconnect, /* xDestroy */
+    sessions_open,       /* xOpen */
+    sessions_close,      /* xClose */
+    sessions_filter,     /* xFilter */
+    sessions_next,       /* xNext */
+    sessions_eof,        /* xEof */
+    sessions_column,     /* xColumn */
+    sessions_rowid,      /* xRowid */
+    NULL,                /* xUpdate */
+    NULL,                /* xBegin */
+    NULL,                /* xSync */
+    NULL,                /* xCommit */
+    NULL,                /* xRollback */
+    NULL,                /* xFindFunction */
+    NULL,                /* xRename */
+    NULL,                /* xSavepoint */
+    NULL,                /* xRelease */
+    NULL,                /* xRollbackTo */
+    NULL,                /* xShadowName */
+    NULL                 /* xIntegrity */
 };
 
 /*

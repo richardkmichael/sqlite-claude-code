@@ -6,10 +6,10 @@
  */
 
 #include <sqlite3ext.h>
-extern const sqlite3_api_routines *sqlite3_api;  /* Defined in init.c */
+extern const sqlite3_api_routines *sqlite3_api; /* Defined in init.c */
 
 #include "common.h"
-#include "cJSON.h"
+#include <cJSON.h>
 
 /* Maximum line buffer size (8MB for large JSON with tool outputs) */
 #define MAX_LINE_BUFFER (8 * 1024 * 1024)
@@ -19,14 +19,14 @@ extern const sqlite3_api_routines *sqlite3_api;  /* Defined in init.c */
 #define PLAN_SESSION_FILTER 2
 
 /* Column indices (must match schema order) */
-#define COL_MESSAGE_ID  0
-#define COL_SESSION_ID  1
-#define COL_TYPE        2
-#define COL_TIMESTAMP   3
-#define COL_PARENT_ID   4
-#define COL_USER_TYPE   5
-#define COL_SUBTYPE     6
-#define COL_JSON_DATA   7
+#define COL_MESSAGE_ID 0
+#define COL_SESSION_ID 1
+#define COL_TYPE       2
+#define COL_TIMESTAMP  3
+#define COL_PARENT_ID  4
+#define COL_USER_TYPE  5
+#define COL_SUBTYPE    6
+#define COL_JSON_DATA  7
 
 /*
  * Messages virtual table structure
@@ -40,32 +40,32 @@ typedef struct MessagesVTab {
  * Current message being returned
  */
 typedef struct CurrentMessage {
-  char uuid[64];           /* Message UUID */
-  char session_id[64];     /* Session UUID */
-  char type[32];           /* user, assistant, system */
-  char timestamp[64];      /* ISO timestamp */
-  char parent_uuid[64];    /* Parent message UUID (may be null) */
-  char user_type[32];      /* external, etc. */
-  char subtype[64];        /* For system messages: local_command, etc. */
-  char *json_data;         /* Full JSON line (dynamically allocated) */
+  char uuid[64];        /* Message UUID */
+  char session_id[64];  /* Session UUID */
+  char type[32];        /* user, assistant, system */
+  char timestamp[64];   /* ISO timestamp */
+  char parent_uuid[64]; /* Parent message UUID (may be null) */
+  char user_type[32];   /* external, etc. */
+  char subtype[64];     /* For system messages: local_command, etc. */
+  char *json_data;      /* Full JSON line (dynamically allocated) */
 } CurrentMessage;
 
 /*
  * Current session file being read
  */
 typedef struct CurrentSessionFile {
-  char id[64];             /* Session UUID (from filename) */
-  char path[PATH_MAX];     /* Full path to .jsonl file */
-  FILE *file;              /* Open file handle */
+  char id[64];         /* Session UUID (from filename) */
+  char path[PATH_MAX]; /* Full path to .jsonl file */
+  FILE *file;          /* Open file handle */
 } CurrentSessionFile;
 
 /*
  * Current project being scanned
  */
 typedef struct CurrentProjectScan {
-  char id[256];            /* Project ID (directory name) */
-  char path[PATH_MAX];     /* Full path to project directory */
-  DIR *sessions_dir;       /* Open directory handle */
+  char id[256];        /* Project ID (directory name) */
+  char path[PATH_MAX]; /* Full path to project directory */
+  DIR *sessions_dir;   /* Open directory handle */
 } CurrentProjectScan;
 
 /*
@@ -79,8 +79,8 @@ typedef struct MessagesCursor {
   CurrentProjectScan project;
   CurrentSessionFile session;
   CurrentMessage message;
-  char *line_buffer;       /* Dynamically allocated line buffer */
-  char filter_session_id[64];  /* Session ID filter (empty = no filter) */
+  char *line_buffer;          /* Dynamically allocated line buffer */
+  char filter_session_id[64]; /* Session ID filter (empty = no filter) */
   int eof;
   sqlite3_int64 rowid;
 } MessagesCursor;
@@ -190,14 +190,8 @@ static int parse_message_json(MessagesCursor *pCur, const char *json_line) {
 /*
  * xConnect/xCreate - Create a new messages virtual table instance
  */
-static int messages_connect(
-  sqlite3 *db,
-  void *pAux UNUSED,
-  int argc,
-  const char *const *argv,
-  sqlite3_vtab **ppVTab,
-  char **pzErr
-) {
+static int messages_connect(sqlite3 *db, void *pAux UNUSED, int argc, const char *const *argv,
+                            sqlite3_vtab **ppVTab, char **pzErr) {
   MARK_UNUSED(pAux);
 
   MessagesVTab *pTab = sqlite3_malloc(sizeof(MessagesVTab));
@@ -218,8 +212,8 @@ static int messages_connect(
   }
 
   /* Default exclusion pattern */
-  copy_config_string(pTab->config.exclude_pattern, sizeof(pTab->config.exclude_pattern),
-                     "agent-*", 7);
+  copy_config_string(pTab->config.exclude_pattern, sizeof(pTab->config.exclude_pattern), "agent-*",
+                     7);
 
   /* Parse arguments */
   for (int i = 3; i < argc; i++) {
@@ -231,18 +225,16 @@ static int messages_connect(
   }
 
   /* Declare table schema */
-  int rc = sqlite3_declare_vtab(db,
-    "CREATE TABLE messages("
-    "  message_id TEXT,"      /* UUID of this message */
-    "  session_id TEXT,"      /* Foreign key to sessions */
-    "  type TEXT,"            /* user, assistant, system */
-    "  timestamp TEXT,"       /* ISO timestamp */
-    "  parent_id TEXT,"       /* Parent message UUID */
-    "  user_type TEXT,"       /* external, etc. */
-    "  subtype TEXT,"         /* For system messages */
-    "  json_data TEXT"        /* Full JSON record */
-    ")"
-  );
+  int rc = sqlite3_declare_vtab(db, "CREATE TABLE messages("
+                                    "  message_id TEXT," /* UUID of this message */
+                                    "  session_id TEXT," /* Foreign key to sessions */
+                                    "  type TEXT,"       /* user, assistant, system */
+                                    "  timestamp TEXT,"  /* ISO timestamp */
+                                    "  parent_id TEXT,"  /* Parent message UUID */
+                                    "  user_type TEXT,"  /* external, etc. */
+                                    "  subtype TEXT,"    /* For system messages */
+                                    "  json_data TEXT"   /* Full JSON record */
+                                    ")");
 
   if (rc != SQLITE_OK) {
     sqlite3_free(pTab);
@@ -257,7 +249,7 @@ static int messages_connect(
  * xDisconnect/xDestroy
  */
 static int messages_disconnect(sqlite3_vtab *pVTab) {
-  MessagesVTab *pTab = (MessagesVTab*)pVTab;
+  MessagesVTab *pTab = (MessagesVTab *)pVTab;
   sqlite3_free(pTab);
   return SQLITE_OK;
 }
@@ -272,8 +264,8 @@ static int messages_disconnect(sqlite3_vtab *pVTab) {
  * SQLite calls this multiple times to evaluate different query strategies.
  * We communicate back via:
  *   idxNum: which plan we'll use
- *   aConstraintUsage: which constraints we'll handle (omit = 1 means we handle it)
- *   estimatedCost/estimatedRows: relative cost for SQLite to compare plans
+ *   aConstraintUsage: which constraints we'll handle (omit = 1 means we handle
+ * it) estimatedCost/estimatedRows: relative cost for SQLite to compare plans
  */
 static int messages_best_index(sqlite3_vtab *tab UNUSED, sqlite3_index_info *pIdxInfo) {
   MARK_UNUSED(tab);
@@ -302,7 +294,7 @@ static int messages_best_index(sqlite3_vtab *tab UNUSED, sqlite3_index_info *pId
     pIdxInfo->idxNum = PLAN_SESSION_FILTER;
     pIdxInfo->aConstraintUsage[session_constraint_idx].argvIndex = 1;
     pIdxInfo->aConstraintUsage[session_constraint_idx].omit = 1;
-    pIdxInfo->estimatedCost = 5000.0;   /* Read one file */
+    pIdxInfo->estimatedCost = 5000.0; /* Read one file */
     pIdxInfo->estimatedRows = 1000;
   } else {
     /* Full scan of all messages (expensive) */
@@ -341,7 +333,7 @@ static int messages_open(sqlite3_vtab *pVTab UNUSED, sqlite3_vtab_cursor **ppCur
  * xClose - Close a cursor
  */
 static int messages_close(sqlite3_vtab_cursor *cur) {
-  MessagesCursor *pCur = (MessagesCursor*)cur;
+  MessagesCursor *pCur = (MessagesCursor *)cur;
 
   if (pCur->session.file) {
     fclose(pCur->session.file);
@@ -370,8 +362,7 @@ static int messages_close(sqlite3_vtab_cursor *cur) {
 static int open_next_session_file(MessagesCursor *pCur, MessagesVTab *pTab) {
   struct dirent *entry;
 
-  while (pCur->project.sessions_dir &&
-         (entry = readdir(pCur->project.sessions_dir)) != NULL) {
+  while (pCur->project.sessions_dir && (entry = readdir(pCur->project.sessions_dir)) != NULL) {
     const char *name = entry->d_name;
 
     /* Skip . and .. */
@@ -391,13 +382,12 @@ static int open_next_session_file(MessagesCursor *pCur, MessagesVTab *pTab) {
     }
 
     /* Build full path */
-    snprintf(pCur->session.path, sizeof(pCur->session.path),
-             "%s/%s", pCur->project.path, name);
+    snprintf(pCur->session.path, sizeof(pCur->session.path), "%s/%s", pCur->project.path, name);
 
     /* Open the file securely (no symlinks) */
     int fd = open(pCur->session.path, O_RDONLY | O_NOFOLLOW);
     if (fd == -1) {
-      continue;  /* Skip if can't open or is symlink */
+      continue; /* Skip if can't open or is symlink */
     }
 
     pCur->session.file = fdopen(fd, "r");
@@ -431,8 +421,7 @@ static int open_next_project(MessagesCursor *pCur) {
     }
 
     /* Build project path */
-    snprintf(pCur->project.path, sizeof(pCur->project.path),
-             "%s/%s", pCur->base_path, name);
+    snprintf(pCur->project.path, sizeof(pCur->project.path), "%s/%s", pCur->base_path, name);
 
     /* Check if it's a directory */
     struct stat st;
@@ -441,13 +430,13 @@ static int open_next_project(MessagesCursor *pCur) {
     }
 
     /* Store project_id */
-    copy_config_string(pCur->project.id, sizeof(pCur->project.id),
-                       name, strlen(name));
+    copy_config_string(pCur->project.id, sizeof(pCur->project.id), name, strlen(name));
 
     /* Open sessions directory securely */
     DIR *dir = opendir(pCur->project.path);
     if (dir) {
-      /* Verify it's a real directory (securely on POSIX, best-effort on Windows) */
+      /* Verify it's a real directory (securely on POSIX, best-effort on
+       * Windows) */
       if (validate_directory(dir, pCur->project.path)) {
         pCur->project.sessions_dir = dir;
         return 1;
@@ -465,7 +454,7 @@ static int open_next_project(MessagesCursor *pCur) {
  * Returns 1 if found and opened, 0 if not found
  */
 static int filter_by_session(MessagesCursor *pCur, const char *session_id) {
-  MessagesVTab *pTab = (MessagesVTab*)pCur->base.pVtab;
+  MessagesVTab *pTab = (MessagesVTab *)pCur->base.pVtab;
   struct dirent *proj_entry;
   struct dirent *sess_entry;
   char target_filename[128];
@@ -486,8 +475,7 @@ static int filter_by_session(MessagesCursor *pCur, const char *session_id) {
     }
 
     /* Build project path */
-    snprintf(pCur->project.path, sizeof(pCur->project.path),
-             "%s/%s", pCur->base_path, proj_name);
+    snprintf(pCur->project.path, sizeof(pCur->project.path), "%s/%s", pCur->base_path, proj_name);
 
     /* Check if it's a directory */
     struct stat st;
@@ -496,8 +484,7 @@ static int filter_by_session(MessagesCursor *pCur, const char *session_id) {
     }
 
     /* Store project_id */
-    copy_config_string(pCur->project.id, sizeof(pCur->project.id),
-                       proj_name, strlen(proj_name));
+    copy_config_string(pCur->project.id, sizeof(pCur->project.id), proj_name, strlen(proj_name));
 
     /* Open project directory */
     DIR *proj_dir = opendir(pCur->project.path);
@@ -512,12 +499,12 @@ static int filter_by_session(MessagesCursor *pCur, const char *session_id) {
         if (messages_is_excluded_file(sess_entry->d_name, pTab->config.exclude_pattern)) {
           closedir(proj_dir);
           pCur->eof = 1;
-          return 0;  /* File exists but is excluded */
+          return 0; /* File exists but is excluded */
         }
 
         /* Build full path */
-        snprintf(pCur->session.path, sizeof(pCur->session.path),
-                 "%s/%s", pCur->project.path, sess_entry->d_name);
+        snprintf(pCur->session.path, sizeof(pCur->session.path), "%s/%s", pCur->project.path,
+                 sess_entry->d_name);
 
         /* Open the file securely (no symlinks) */
         int fd = open(pCur->session.path, O_RDONLY | O_NOFOLLOW);
@@ -527,7 +514,7 @@ static int filter_by_session(MessagesCursor *pCur, const char *session_id) {
             strncpy(pCur->session.id, session_id, sizeof(pCur->session.id) - 1);
             pCur->session.id[sizeof(pCur->session.id) - 1] = '\0';
             closedir(proj_dir);
-            return 1;  /* Success */
+            return 1; /* Success */
           }
           close(fd);
         }
@@ -546,8 +533,8 @@ static int filter_by_session(MessagesCursor *pCur, const char *session_id) {
  * xNext - Advance to next message
  */
 static int messages_next(sqlite3_vtab_cursor *cur) {
-  MessagesCursor *pCur = (MessagesCursor*)cur;
-  MessagesVTab *pTab = (MessagesVTab*)cur->pVtab;
+  MessagesCursor *pCur = (MessagesCursor *)cur;
+  MessagesVTab *pTab = (MessagesVTab *)cur->pVtab;
 
   while (1) {
     /* Try to read next line from current file */
@@ -564,8 +551,10 @@ static int messages_next(sqlite3_vtab_cursor *cur) {
           /* Peek to see if we're at EOF */
           int c = fgetc(pCur->session.file);
           if (c == EOF) {
-            fprintf(stderr, "warning: skipping partial line in %s (write in progress?)\n",
-                    pCur->session.path);
+            /* fputs for portability - glibc lacks fprintf_s (C11 Annex K) */
+            fputs("warning: skipping partial line in ", stderr);
+            fputs(pCur->session.path, stderr);
+            fputs(" (write in progress?)\n", stderr);
             continue;
           }
           ungetc(c, pCur->session.file);
@@ -620,17 +609,12 @@ static int messages_next(sqlite3_vtab_cursor *cur) {
  *   PLAN_SESSION_FILTER: argv[0] contains session_id to filter by
  *   PLAN_FULL_SCAN: no constraints, scan everything
  */
-static int messages_filter(
-  sqlite3_vtab_cursor *cur,
-  int idxNum,
-  const char *idxStr UNUSED,
-  int argc,
-  sqlite3_value **argv
-) {
+static int messages_filter(sqlite3_vtab_cursor *cur, int idxNum, const char *idxStr UNUSED,
+                           int argc, sqlite3_value **argv) {
   MARK_UNUSED(idxStr);
 
-  MessagesCursor *pCur = (MessagesCursor*)cur;
-  MessagesVTab *pTab = (MessagesVTab*)cur->pVtab;
+  MessagesCursor *pCur = (MessagesCursor *)cur;
+  MessagesVTab *pTab = (MessagesVTab *)cur->pVtab;
 
   /* Reset cursor state */
   pCur->rowid = 0;
@@ -650,35 +634,35 @@ static int messages_filter(
 
   /* Execute the chosen query plan */
   switch (idxNum) {
-    case PLAN_SESSION_FILTER:
-      /* Filter by session_id - find and read only the matching file */
-      if (argc > 0 && sqlite3_value_type(argv[0]) == SQLITE_TEXT) {
-        const char *session_id = (const char *)sqlite3_value_text(argv[0]);
-        if (!filter_by_session(pCur, session_id)) {
-          /* Session not found or excluded - return empty result */
-          return SQLITE_OK;
-        }
-      } else {
-        /* Invalid constraint value - return empty */
-        pCur->eof = 1;
+  case PLAN_SESSION_FILTER:
+    /* Filter by session_id - find and read only the matching file */
+    if (argc > 0 && sqlite3_value_type(argv[0]) == SQLITE_TEXT) {
+      const char *session_id = (const char *)sqlite3_value_text(argv[0]);
+      if (!filter_by_session(pCur, session_id)) {
+        /* Session not found or excluded - return empty result */
         return SQLITE_OK;
       }
-      break;
+    } else {
+      /* Invalid constraint value - return empty */
+      pCur->eof = 1;
+      return SQLITE_OK;
+    }
+    break;
 
-    case PLAN_FULL_SCAN:
-    default:
-      /* Full scan - find first project and session */
-      if (!open_next_project(pCur)) {
-        pCur->eof = 1;
-        return SQLITE_OK;
-      }
+  case PLAN_FULL_SCAN:
+  default:
+    /* Full scan - find first project and session */
+    if (!open_next_project(pCur)) {
+      pCur->eof = 1;
+      return SQLITE_OK;
+    }
 
-      /* Find first session file */
-      if (!open_next_session_file(pCur, pTab)) {
-        closedir(pCur->project.sessions_dir);
-        pCur->project.sessions_dir = NULL;
-      }
-      break;
+    /* Find first session file */
+    if (!open_next_session_file(pCur, pTab)) {
+      closedir(pCur->project.sessions_dir);
+      pCur->project.sessions_dir = NULL;
+    }
+    break;
   }
 
   /* Advance to first message */
@@ -689,67 +673,63 @@ static int messages_filter(
  * xEof
  */
 static int messages_eof(sqlite3_vtab_cursor *cur) {
-  MessagesCursor *pCur = (MessagesCursor*)cur;
+  MessagesCursor *pCur = (MessagesCursor *)cur;
   return pCur->eof;
 }
 
 /*
  * xColumn - Return column value
  */
-static int messages_column(
-  sqlite3_vtab_cursor *cur,
-  sqlite3_context *ctx,
-  int col
-) {
-  MessagesCursor *pCur = (MessagesCursor*)cur;
+static int messages_column(sqlite3_vtab_cursor *cur, sqlite3_context *ctx, int col) {
+  MessagesCursor *pCur = (MessagesCursor *)cur;
 
   switch (col) {
-    case 0:  /* message_id */
-      sqlite3_result_text(ctx, pCur->message.uuid, -1, SQLITE_TRANSIENT);
-      break;
+  case 0: /* message_id */
+    sqlite3_result_text(ctx, pCur->message.uuid, -1, SQLITE_TRANSIENT);
+    break;
 
-    case 1:  /* session_id */
-      sqlite3_result_text(ctx, pCur->message.session_id, -1, SQLITE_TRANSIENT);
-      break;
+  case 1: /* session_id */
+    sqlite3_result_text(ctx, pCur->message.session_id, -1, SQLITE_TRANSIENT);
+    break;
 
-    case 2:  /* type */
-      sqlite3_result_text(ctx, pCur->message.type, -1, SQLITE_TRANSIENT);
-      break;
+  case 2: /* type */
+    sqlite3_result_text(ctx, pCur->message.type, -1, SQLITE_TRANSIENT);
+    break;
 
-    case 3:  /* timestamp */
-      sqlite3_result_text(ctx, pCur->message.timestamp, -1, SQLITE_TRANSIENT);
-      break;
+  case 3: /* timestamp */
+    sqlite3_result_text(ctx, pCur->message.timestamp, -1, SQLITE_TRANSIENT);
+    break;
 
-    case 4:  /* parent_id */
-      if (pCur->message.parent_uuid[0] != '\0') {
-        sqlite3_result_text(ctx, pCur->message.parent_uuid, -1, SQLITE_TRANSIENT);
-      } else {
-        sqlite3_result_null(ctx);
-      }
-      break;
+  case 4: /* parent_id */
+    if (pCur->message.parent_uuid[0] != '\0') {
+      sqlite3_result_text(ctx, pCur->message.parent_uuid, -1, SQLITE_TRANSIENT);
+    } else {
+      sqlite3_result_null(ctx);
+    }
+    break;
 
-    case 5:  /* user_type */
-      sqlite3_result_text(ctx, pCur->message.user_type, -1, SQLITE_TRANSIENT);
-      break;
+  case 5: /* user_type */
+    sqlite3_result_text(ctx, pCur->message.user_type, -1, SQLITE_TRANSIENT);
+    break;
 
-    case 6:  /* subtype */
-      if (pCur->message.subtype[0] != '\0') {
-        sqlite3_result_text(ctx, pCur->message.subtype, -1, SQLITE_TRANSIENT);
-      } else {
-        sqlite3_result_null(ctx);
-      }
-      break;
+  case 6: /* subtype */
+    if (pCur->message.subtype[0] != '\0') {
+      sqlite3_result_text(ctx, pCur->message.subtype, -1, SQLITE_TRANSIENT);
+    } else {
+      sqlite3_result_null(ctx);
+    }
+    break;
 
-    case 7:  /* json_data */
-      if (pCur->message.json_data) {
-        sqlite3_result_text(ctx, pCur->message.json_data, -1, SQLITE_TRANSIENT);
-      } else {
-        sqlite3_result_null(ctx);
-      }
-      break;
+  case 7: /* json_data */
+    if (pCur->message.json_data) {
+      sqlite3_result_text(ctx, pCur->message.json_data, -1, SQLITE_TRANSIENT);
+    } else {
+      sqlite3_result_null(ctx);
+    }
+    break;
 
-    default:
-      return SQLITE_ERROR;
+  default:
+    return SQLITE_ERROR;
   }
 
   return SQLITE_OK;
@@ -759,7 +739,7 @@ static int messages_column(
  * xRowid
  */
 static int messages_rowid(sqlite3_vtab_cursor *cur, sqlite3_int64 *pRowid) {
-  MessagesCursor *pCur = (MessagesCursor*)cur;
+  MessagesCursor *pCur = (MessagesCursor *)cur;
   *pRowid = pCur->rowid;
   return SQLITE_OK;
 }
@@ -768,31 +748,31 @@ static int messages_rowid(sqlite3_vtab_cursor *cur, sqlite3_int64 *pRowid) {
  * Messages virtual table module
  */
 sqlite3_module messages_module = {
-  0,                      /* iVersion */
-  messages_connect,       /* xCreate */
-  messages_connect,       /* xConnect */
-  messages_best_index,    /* xBestIndex */
-  messages_disconnect,    /* xDisconnect */
-  messages_disconnect,    /* xDestroy */
-  messages_open,          /* xOpen */
-  messages_close,         /* xClose */
-  messages_filter,        /* xFilter */
-  messages_next,          /* xNext */
-  messages_eof,           /* xEof */
-  messages_column,        /* xColumn */
-  messages_rowid,         /* xRowid */
-  NULL,                   /* xUpdate */
-  NULL,                   /* xBegin */
-  NULL,                   /* xSync */
-  NULL,                   /* xCommit */
-  NULL,                   /* xRollback */
-  NULL,                   /* xFindFunction */
-  NULL,                   /* xRename */
-  NULL,                   /* xSavepoint */
-  NULL,                   /* xRelease */
-  NULL,                   /* xRollbackTo */
-  NULL,                   /* xShadowName */
-  NULL                    /* xIntegrity */
+    0,                   /* iVersion */
+    messages_connect,    /* xCreate */
+    messages_connect,    /* xConnect */
+    messages_best_index, /* xBestIndex */
+    messages_disconnect, /* xDisconnect */
+    messages_disconnect, /* xDestroy */
+    messages_open,       /* xOpen */
+    messages_close,      /* xClose */
+    messages_filter,     /* xFilter */
+    messages_next,       /* xNext */
+    messages_eof,        /* xEof */
+    messages_column,     /* xColumn */
+    messages_rowid,      /* xRowid */
+    NULL,                /* xUpdate */
+    NULL,                /* xBegin */
+    NULL,                /* xSync */
+    NULL,                /* xCommit */
+    NULL,                /* xRollback */
+    NULL,                /* xFindFunction */
+    NULL,                /* xRename */
+    NULL,                /* xSavepoint */
+    NULL,                /* xRelease */
+    NULL,                /* xRollbackTo */
+    NULL,                /* xShadowName */
+    NULL                 /* xIntegrity */
 };
 
 /*

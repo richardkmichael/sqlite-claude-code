@@ -6,10 +6,10 @@
  */
 
 #include <sqlite3ext.h>
-extern const sqlite3_api_routines *sqlite3_api;  /* Defined in init.c */
+extern const sqlite3_api_routines *sqlite3_api; /* Defined in init.c */
 
 #include "common.h"
-#include "cJSON.h"
+#include <cJSON.h>
 
 /*
  * get_message_content(json_text) -> TEXT
@@ -17,11 +17,7 @@ extern const sqlite3_api_routines *sqlite3_api;  /* Defined in init.c */
  * Extract message.content, handling both string and array formats.
  * For arrays, returns the first text block's content.
  */
-static void get_message_content_func(
-  sqlite3_context *ctx,
-  int argc,
-  sqlite3_value **argv
-) {
+static void get_message_content_func(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
   if (argc != 1 || sqlite3_value_type(argv[0]) == SQLITE_NULL) {
     sqlite3_result_null(ctx);
     return;
@@ -71,11 +67,7 @@ static void get_message_content_func(
  *
  * Extract message.role (user, assistant, system).
  */
-static void get_message_role_func(
-  sqlite3_context *ctx,
-  int argc,
-  sqlite3_value **argv
-) {
+static void get_message_role_func(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
   if (argc != 1 || sqlite3_value_type(argv[0]) == SQLITE_NULL) {
     sqlite3_result_null(ctx);
     return;
@@ -108,11 +100,7 @@ static void get_message_role_func(
  *
  * Extract message.model (e.g., "claude-sonnet-4-20250514").
  */
-static void get_message_model_func(
-  sqlite3_context *ctx,
-  int argc,
-  sqlite3_value **argv
-) {
+static void get_message_model_func(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
   if (argc != 1 || sqlite3_value_type(argv[0]) == SQLITE_NULL) {
     sqlite3_result_null(ctx);
     return;
@@ -146,11 +134,7 @@ static void get_message_model_func(
  * Extract plain text from message content, skipping thinking blocks.
  * Concatenates all non-thinking text content.
  */
-static void get_message_text_func(
-  sqlite3_context *ctx,
-  int argc,
-  sqlite3_value **argv
-) {
+static void get_message_text_func(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
   if (argc != 1 || sqlite3_value_type(argv[0]) == SQLITE_NULL) {
     sqlite3_result_null(ctx);
     return;
@@ -195,16 +179,19 @@ static void get_message_text_func(
       cJSON *item = cJSON_GetArrayItem(content, i);
       cJSON *type = cJSON_GetObjectItem(item, "type");
 
-      if (!type || !cJSON_IsString(type)) continue;
+      if (!type || !cJSON_IsString(type))
+        continue;
 
       /* Skip thinking blocks */
-      if (strcmp(type->valuestring, "thinking") == 0) continue;
+      if (strcmp(type->valuestring, "thinking") == 0)
+        continue;
 
       if (strcmp(type->valuestring, "text") == 0) {
         cJSON *text = cJSON_GetObjectItem(item, "text");
         if (text && cJSON_IsString(text)) {
           total_len += strlen(text->valuestring);
-          if (total_len > 0) total_len += 1;  /* For newline separator */
+          if (total_len > 0)
+            total_len += 1; /* For newline separator */
         }
       }
     }
@@ -230,8 +217,10 @@ static void get_message_text_func(
       cJSON *item = cJSON_GetArrayItem(content, i);
       cJSON *type = cJSON_GetObjectItem(item, "type");
 
-      if (!type || !cJSON_IsString(type)) continue;
-      if (strcmp(type->valuestring, "thinking") == 0) continue;
+      if (!type || !cJSON_IsString(type))
+        continue;
+      if (strcmp(type->valuestring, "thinking") == 0)
+        continue;
 
       if (strcmp(type->valuestring, "text") == 0) {
         cJSON *text = cJSON_GetObjectItem(item, "text");
@@ -261,11 +250,7 @@ static void get_message_text_func(
  * or message.usage.input_tokens (for user).
  * Returns NULL if token info not available.
  */
-static void message_token_count_func(
-  sqlite3_context *ctx,
-  int argc,
-  sqlite3_value **argv
-) {
+static void message_token_count_func(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
   if (argc != 1 || sqlite3_value_type(argv[0]) == SQLITE_NULL) {
     sqlite3_result_null(ctx);
     return;
@@ -310,11 +295,7 @@ static void message_token_count_func(
  *
  * Check if message content contains a thinking block.
  */
-static void is_thinking_message_func(
-  sqlite3_context *ctx,
-  int argc,
-  sqlite3_value **argv
-) {
+static void is_thinking_message_func(sqlite3_context *ctx, int argc, sqlite3_value **argv) {
   if (argc != 1 || sqlite3_value_type(argv[0]) == SQLITE_NULL) {
     sqlite3_result_int(ctx, 0);
     return;
@@ -336,8 +317,7 @@ static void is_thinking_message_func(
       for (int i = 0; i < array_size; i++) {
         cJSON *item = cJSON_GetArrayItem(content, i);
         cJSON *type = cJSON_GetObjectItem(item, "type");
-        if (type && cJSON_IsString(type) &&
-            strcmp(type->valuestring, "thinking") == 0) {
+        if (type && cJSON_IsString(type) && strcmp(type->valuestring, "thinking") == 0) {
           sqlite3_result_int(ctx, 1);
           cJSON_Delete(root);
           return;
@@ -356,29 +336,35 @@ static void is_thinking_message_func(
 int register_helper_functions(sqlite3 *db) {
   int rc;
 
-  rc = sqlite3_create_function(db, "get_message_content", 1, SQLITE_UTF8,
-                               NULL, get_message_content_func, NULL, NULL);
-  if (rc != SQLITE_OK) return rc;
+  rc = sqlite3_create_function(db, "get_message_content", 1, SQLITE_UTF8, NULL,
+                               get_message_content_func, NULL, NULL);
+  if (rc != SQLITE_OK)
+    return rc;
 
-  rc = sqlite3_create_function(db, "get_message_role", 1, SQLITE_UTF8,
-                               NULL, get_message_role_func, NULL, NULL);
-  if (rc != SQLITE_OK) return rc;
+  rc = sqlite3_create_function(db, "get_message_role", 1, SQLITE_UTF8, NULL, get_message_role_func,
+                               NULL, NULL);
+  if (rc != SQLITE_OK)
+    return rc;
 
-  rc = sqlite3_create_function(db, "get_message_model", 1, SQLITE_UTF8,
-                               NULL, get_message_model_func, NULL, NULL);
-  if (rc != SQLITE_OK) return rc;
+  rc = sqlite3_create_function(db, "get_message_model", 1, SQLITE_UTF8, NULL,
+                               get_message_model_func, NULL, NULL);
+  if (rc != SQLITE_OK)
+    return rc;
 
-  rc = sqlite3_create_function(db, "get_message_text", 1, SQLITE_UTF8,
-                               NULL, get_message_text_func, NULL, NULL);
-  if (rc != SQLITE_OK) return rc;
+  rc = sqlite3_create_function(db, "get_message_text", 1, SQLITE_UTF8, NULL, get_message_text_func,
+                               NULL, NULL);
+  if (rc != SQLITE_OK)
+    return rc;
 
-  rc = sqlite3_create_function(db, "message_token_count", 1, SQLITE_UTF8,
-                               NULL, message_token_count_func, NULL, NULL);
-  if (rc != SQLITE_OK) return rc;
+  rc = sqlite3_create_function(db, "message_token_count", 1, SQLITE_UTF8, NULL,
+                               message_token_count_func, NULL, NULL);
+  if (rc != SQLITE_OK)
+    return rc;
 
-  rc = sqlite3_create_function(db, "is_thinking_message", 1, SQLITE_UTF8,
-                               NULL, is_thinking_message_func, NULL, NULL);
-  if (rc != SQLITE_OK) return rc;
+  rc = sqlite3_create_function(db, "is_thinking_message", 1, SQLITE_UTF8, NULL,
+                               is_thinking_message_func, NULL, NULL);
+  if (rc != SQLITE_OK)
+    return rc;
 
   return SQLITE_OK;
 }
@@ -390,55 +376,62 @@ int create_functions_metadata_table(sqlite3 *db, char **pzErrMsg) {
   int rc;
 
   /* Create the metadata table */
-  const char *create_table =
-    "CREATE TABLE IF NOT EXISTS _claude_code_functions ("
-    "  name TEXT PRIMARY KEY,"
-    "  signature TEXT,"
-    "  description TEXT,"
-    "  example TEXT"
-    ")";
+  const char *create_table = "CREATE TABLE IF NOT EXISTS _claude_code_functions ("
+                             "  name TEXT PRIMARY KEY,"
+                             "  signature TEXT,"
+                             "  description TEXT,"
+                             "  example TEXT"
+                             ")";
 
   rc = sqlite3_exec(db, create_table, NULL, NULL, pzErrMsg);
-  if (rc != SQLITE_OK) return rc;
+  if (rc != SQLITE_OK)
+    return rc;
 
   /* Insert function documentation */
-  const char *docs[] = {
-    "INSERT OR REPLACE INTO _claude_code_functions VALUES("
-    "'get_message_content', 'get_message_content(json_text) -> TEXT', "
-    "'Extract message.content, handling array/text formats. Returns first text block for arrays.', "
-    "'SELECT get_message_content(json_data) FROM messages WHERE type=\"user\" LIMIT 1')",
+  const char *docs[] = {"INSERT OR REPLACE INTO _claude_code_functions VALUES("
+                        "'get_message_content', 'get_message_content(json_text) -> TEXT', "
+                        "'Extract message.content, handling array/text formats. Returns first "
+                        "text block for arrays.', "
+                        "'SELECT get_message_content(json_data) FROM messages WHERE "
+                        "type=\"user\" LIMIT 1')",
 
-    "INSERT OR REPLACE INTO _claude_code_functions VALUES("
-    "'get_message_role', 'get_message_role(json_text) -> TEXT', "
-    "'Extract role from message (user, assistant, system).', "
-    "'SELECT get_message_role(json_data) FROM messages LIMIT 1')",
+                        "INSERT OR REPLACE INTO _claude_code_functions VALUES("
+                        "'get_message_role', 'get_message_role(json_text) -> TEXT', "
+                        "'Extract role from message (user, assistant, system).', "
+                        "'SELECT get_message_role(json_data) FROM messages LIMIT 1')",
 
-    "INSERT OR REPLACE INTO _claude_code_functions VALUES("
-    "'get_message_model', 'get_message_model(json_text) -> TEXT', "
-    "'Extract model name from assistant message.', "
-    "'SELECT get_message_model(json_data) FROM messages WHERE type=\"assistant\" LIMIT 1')",
+                        "INSERT OR REPLACE INTO _claude_code_functions VALUES("
+                        "'get_message_model', 'get_message_model(json_text) -> TEXT', "
+                        "'Extract model name from assistant message.', "
+                        "'SELECT get_message_model(json_data) FROM messages WHERE "
+                        "type=\"assistant\" LIMIT 1')",
 
-    "INSERT OR REPLACE INTO _claude_code_functions VALUES("
-    "'get_message_text', 'get_message_text(json_text) -> TEXT', "
-    "'Extract plain text from content, skipping thinking blocks. Concatenates multiple text blocks.', "
-    "'SELECT get_message_text(json_data) FROM messages WHERE type=\"assistant\" LIMIT 1')",
+                        "INSERT OR REPLACE INTO _claude_code_functions VALUES("
+                        "'get_message_text', 'get_message_text(json_text) -> TEXT', "
+                        "'Extract plain text from content, skipping thinking blocks. "
+                        "Concatenates multiple text blocks.', "
+                        "'SELECT get_message_text(json_data) FROM messages WHERE "
+                        "type=\"assistant\" LIMIT 1')",
 
-    "INSERT OR REPLACE INTO _claude_code_functions VALUES("
-    "'message_token_count', 'message_token_count(json_text) -> INTEGER', "
-    "'Extract token count from usage (output_tokens for assistant, input_tokens for user).', "
-    "'SELECT SUM(message_token_count(json_data)) FROM messages WHERE type=\"assistant\"')",
+                        "INSERT OR REPLACE INTO _claude_code_functions VALUES("
+                        "'message_token_count', 'message_token_count(json_text) -> INTEGER', "
+                        "'Extract token count from usage (output_tokens for assistant, "
+                        "input_tokens for user).', "
+                        "'SELECT SUM(message_token_count(json_data)) FROM messages WHERE "
+                        "type=\"assistant\"')",
 
-    "INSERT OR REPLACE INTO _claude_code_functions VALUES("
-    "'is_thinking_message', 'is_thinking_message(json_text) -> INTEGER', "
-    "'Check if message contains a thinking block (returns 0 or 1).', "
-    "'SELECT COUNT(*) FROM messages WHERE is_thinking_message(json_data) = 1')",
+                        "INSERT OR REPLACE INTO _claude_code_functions VALUES("
+                        "'is_thinking_message', 'is_thinking_message(json_text) -> INTEGER', "
+                        "'Check if message contains a thinking block (returns 0 or 1).', "
+                        "'SELECT COUNT(*) FROM messages WHERE is_thinking_message(json_data) = "
+                        "1')",
 
-    NULL
-  };
+                        NULL};
 
   for (int i = 0; docs[i] != NULL; i++) {
     rc = sqlite3_exec(db, docs[i], NULL, NULL, pzErrMsg);
-    if (rc != SQLITE_OK) return rc;
+    if (rc != SQLITE_OK)
+      return rc;
   }
 
   return SQLITE_OK;
