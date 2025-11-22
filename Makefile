@@ -1,6 +1,22 @@
-CC = clang
-CFLAGS = -Wall -Wextra -Werror -fPIC -isystem /opt/homebrew/Cellar/sqlite/3.51.0/include -isystem src/vendor
-LDFLAGS = -L/opt/homebrew/Cellar/sqlite/3.51.0/lib -lsqlite3 -dynamiclib
+CC ?= clang
+
+# SQLite flags: allow environment override for cross-platform builds
+# E.g., on Windows: set SQLITE_CFLAGS=-I/path/to/sqlite and SQLITE_LIBS=-L/path -lsqlite3
+ifndef SQLITE_CFLAGS
+  BREW_SQLITE := $(shell brew --prefix sqlite3 2>/dev/null)
+  ifneq ($(BREW_SQLITE),)
+    SQLITE_CFLAGS := $(shell PKG_CONFIG_PATH=$(BREW_SQLITE)/lib/pkgconfig pkg-config --cflags sqlite3)
+    SQLITE_LIBS := $(shell PKG_CONFIG_PATH=$(BREW_SQLITE)/lib/pkgconfig pkg-config --libs sqlite3)
+  else
+    SQLITE_CFLAGS := $(shell pkg-config --cflags sqlite3 2>/dev/null)
+    SQLITE_LIBS := $(shell pkg-config --libs sqlite3 2>/dev/null)
+  endif
+  # Convert -I to -isystem to suppress warnings from SQLite headers
+  SQLITE_CFLAGS := $(subst -I,-isystem ,$(SQLITE_CFLAGS))
+endif
+
+CFLAGS = -Wall -Wextra -Werror -fPIC $(SQLITE_CFLAGS) -isystem src/vendor
+LDFLAGS = $(SQLITE_LIBS) -dynamiclib
 
 # Our source files (for formatting/linting)
 OUR_SOURCES = src/init.c src/common.c src/projects.c src/sessions.c src/messages.c src/functions.c
@@ -56,22 +72,31 @@ build/asan:
 
 # ASan test harness (avoids macOS SIP issues with DYLD_INSERT_LIBRARIES)
 $(ASAN_HARNESS): test/asan_harness.c | build/asan
-	$(CC) $(ASAN_CFLAGS) -L/opt/homebrew/Cellar/sqlite/3.51.0/lib -lsqlite3 -fsanitize=address -o $@ $<
+	$(CC) $(ASAN_CFLAGS) $(SQLITE_LIBS) -fsanitize=address -o $@ $<
 
 # Run just ASan tests (builds ASan binaries first)
 check: $(ASAN_TARGET) $(ASAN_HARNESS)
 	@CLAUDE_PROJECTS_DIR=./test-projects $(ASAN_HARNESS) $(ASAN_TARGET)
 
-# Code quality tools
-LLVM_PATH = /opt/homebrew/opt/llvm/bin
+# Code quality tools: allow environment override, prefer Homebrew LLVM, fall back to PATH
+ifndef CLANG_FORMAT
+  BREW_LLVM := $(shell brew --prefix llvm 2>/dev/null)
+  ifneq ($(BREW_LLVM),)
+    CLANG_FORMAT := $(BREW_LLVM)/bin/clang-format
+    CLANG_TIDY := $(BREW_LLVM)/bin/clang-tidy
+  else
+    CLANG_FORMAT := clang-format
+    CLANG_TIDY := clang-tidy
+  endif
+endif
 
 format:
-	$(LLVM_PATH)/clang-format -i $(OUR_SOURCES) $(OUR_HEADERS)
+	$(CLANG_FORMAT) -i $(OUR_SOURCES) $(OUR_HEADERS)
 
 format-check:
-	$(LLVM_PATH)/clang-format --dry-run --Werror $(OUR_SOURCES) $(OUR_HEADERS)
+	$(CLANG_FORMAT) --dry-run --Werror $(OUR_SOURCES) $(OUR_HEADERS)
 
 lint:
-	$(LLVM_PATH)/clang-tidy $(OUR_SOURCES) -- $(CFLAGS)
+	$(CLANG_TIDY) $(OUR_SOURCES) -- $(CFLAGS)
 
 .PHONY: all clean test check format format-check lint
