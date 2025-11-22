@@ -19,7 +19,7 @@ CFLAGS = -Wall -Wextra -Werror -fPIC $(SQLITE_CFLAGS) -isystem src/vendor
 LDFLAGS = $(SQLITE_LIBS) -dynamiclib
 
 # Our source files (for formatting/linting)
-OUR_SOURCES = src/init.c src/common.c src/projects.c src/sessions.c src/messages.c src/functions.c
+OUR_SOURCES = src/init.c src/common.c src/projects.c src/sessions.c src/messages.c
 OUR_HEADERS = src/common.h
 
 # All sources including vendored code

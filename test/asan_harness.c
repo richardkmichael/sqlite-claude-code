@@ -79,25 +79,11 @@ int main(int argc, char **argv) {
     failures += run_query(db, "SELECT * FROM messages LIMIT 0", 0);
     printf("\n");
 
-    /* Test helper functions exist */
-    printf("Testing helper functions...\n");
-    failures += run_query(db, "SELECT get_message_role('{\"message\":{\"role\":\"user\"}}')", 0);
-    failures += run_query(db, "SELECT get_message_model('{\"message\":{\"model\":\"test\"}}')", 0);
-    failures += run_query(db, "SELECT message_token_count('{\"costUSD\":0.001}')", 0);
-    failures += run_query(db, "SELECT is_thinking_message('{}')", 0);
-    printf("\n");
-
     /* Test read-only enforcement */
     printf("Testing read-only enforcement...\n");
     failures += run_query(db, "INSERT INTO projects VALUES (1,2,3,4,5,6)", 1);
     failures += run_query(db, "INSERT INTO sessions VALUES (1,2,3,4,5,6,7,8,9)", 1);
     failures += run_query(db, "INSERT INTO messages VALUES (1,2,3,4,5,6,7)", 1);
-    printf("\n");
-
-    /* Test functions metadata */
-    printf("Testing functions metadata...\n");
-    failures += run_query(db,
-        "SELECT name, description FROM _claude_code_functions WHERE name='cc_version'", 0);
     printf("\n");
 
     sqlite3_close(db);

@@ -71,11 +71,6 @@ int sqlite3_claudecode_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_rout
     return rc;
   }
 
-  rc = register_helper_functions(db);
-  if (rc != SQLITE_OK) {
-    return rc;
-  }
-
   /*
    * One-time setup: schema creation.
    * Protected by mutex to prevent redundant work when multiple threads
@@ -124,13 +119,6 @@ int sqlite3_claudecode_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_rout
     }
 
     rc = create_messages_table(db, default_dir, pzErrMsg);
-    if (rc != SQLITE_OK) {
-      sqlite3_mutex_leave(mutex);
-      return rc;
-    }
-
-    /* Create functions metadata table */
-    rc = create_functions_metadata_table(db, pzErrMsg);
     if (rc != SQLITE_OK) {
       sqlite3_mutex_leave(mutex);
       return rc;
