@@ -10,3 +10,4 @@ build/
 
 sqlite-*
 test-projects/
+test-logs/
