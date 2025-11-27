@@ -1,0 +1,19 @@
+version = 1
+revision = 3
+requires-python = ">=3.10"
+
+[[package]]
+name = "examples"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "sqlite-claude-code" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "sqlite-claude-code", directory = "../package" }]
+
+[[package]]
+name = "sqlite-claude-code"
+version = "0.1.0"
+source = { directory = "../package" }

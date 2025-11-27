@@ -1,0 +1,10 @@
+[project]
+name = "examples"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "sqlite-claude-code",
+]
+
+[tool.uv.sources]
+sqlite-claude-code = { path = "../package" }
