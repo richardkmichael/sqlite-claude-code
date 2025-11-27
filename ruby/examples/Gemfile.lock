@@ -1,0 +1,56 @@
+PATH
+  remote: ../gem
+  specs:
+    sqlite-claude_code (0.1.0)
+      sqlite3 (~> 2.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    activemodel (8.1.1)
+      activesupport (= 8.1.1)
+    activerecord (8.1.1)
+      activemodel (= 8.1.1)
+      activesupport (= 8.1.1)
+      timeout (>= 0.4.0)
+    activesupport (8.1.1)
+      base64
+      bigdecimal
+      concurrent-ruby (~> 1.0, >= 1.3.1)
+      connection_pool (>= 2.2.5)
+      drb
+      i18n (>= 1.6, < 2)
+      json
+      logger (>= 1.4.2)
+      minitest (>= 5.1)
+      securerandom (>= 0.3)
+      tzinfo (~> 2.0, >= 2.0.5)
+      uri (>= 0.13.1)
+    base64 (0.3.0)
+    bigdecimal (3.3.1)
+    concurrent-ruby (1.3.5)
+    connection_pool (2.5.4)
+    drb (2.2.3)
+    i18n (1.14.7)
+      concurrent-ruby (~> 1.0)
+    json (2.16.0)
+    logger (1.7.0)
+    minitest (5.26.2)
+    ostruct (0.6.3)
+    securerandom (0.4.1)
+    sqlite3 (2.8.0-arm64-darwin)
+    timeout (0.4.4)
+    tzinfo (2.0.6)
+      concurrent-ruby (~> 1.0)
+    uri (1.1.1)
+
+PLATFORMS
+  arm64-darwin-23
+
+DEPENDENCIES
+  activerecord (~> 8.1)
+  ostruct
+  sqlite-claude_code!
+
+BUNDLED WITH
+   2.7.2

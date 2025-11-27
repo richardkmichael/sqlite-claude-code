@@ -1,0 +1,27 @@
+require "rake/testtask"
+require "rake/extensiontask"
+
+# Compile C extension
+# Note: Extension name is "claude_code" (not sqlite_claude_code) to match
+# the entry point sqlite3_claudecode_init in init.c
+Rake::ExtensionTask.new("claude_code") do |ext|
+  ext.ext_dir = "ext/sqlite_claude_code"
+  ext.lib_dir = "lib/sqlite_claude_code"
+end
+
+Rake::TestTask.new(:test) do |t|
+  t.libs << "test" << "lib"
+  t.test_files = FileList["test/**/*_test.rb"]
+end
+
+desc "Build gem (source)"
+task :build => :compile do
+  sh "gem build sqlite-claude_code.gemspec"
+end
+
+desc "Install gem locally"
+task :install => :build do
+  sh "gem install sqlite-claude_code-*.gem"
+end
+
+task default: [:compile, :test]

@@ -1,0 +1,17 @@
+# C extensions
+*.so
+*.bundle
+*.dylib
+*.dll
+
+# Distribution / packaging
+pkg/
+*.gem
+
+# Build artifacts
+build/
+tmp/
+
+# Bundler
+vendor/bundle/
+.bundle/
