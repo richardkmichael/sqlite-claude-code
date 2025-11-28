@@ -81,4 +81,9 @@
 
 - When future ideas and considerations arise, add them to @FUTURE.md or @FUTURE_USAGE.md
 
+## Language Bindings
 
+- The extension is packaged for both Ruby (as a gem) and Python (as a package)
+- See @PACKAGING.md for packaging architecture, design decisions, and workflows
+- Ruby gem: `ruby/gem/` with examples in `ruby/examples/`
+- Python package: `python/package/` with examples in `python/examples/`
